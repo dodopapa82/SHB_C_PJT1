@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DART 재무제표 취약점 분석 플랫폼</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- 헤더 -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <span class="logo-text">DART Financial Analyzer</span>
+                </div>
+                <nav class="nav">
+                    <a href="#" class="nav-link active" data-page="search">검색</a>
+                    <a href="#" class="nav-link" data-page="dashboard">대시보드</a>
+                    <a href="#" class="nav-link" data-page="financial">재무제표</a>
+                    <a href="#" class="nav-link" data-page="weakness">취약점 분석</a>
+                    <a href="#" class="nav-link" data-page="report">보고서</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 컨텐츠 -->
+    <main class="main">
+        <!-- 검색 화면 -->
+        <section id="search-page" class="page active">
+            <div class="container">
+                <div class="hero">
+                    <h1 class="hero-title">재무제표 취약점 분석</h1>
+                    <p class="hero-subtitle">DART 공시 데이터 기반 기업 재무 리스크 분석 시스템</p>
+                    
+                    <div class="search-box">
+                        <div class="search-input-wrapper">
+                            <input type="text" id="search-input" class="search-input" 
+                                   placeholder="기업명 또는 종목코드를 입력하세요 (예: 삼성전자, 005930)">
+                            <button id="search-btn" class="search-btn">
+                                <span>🔍</span> 검색
+                            </button>
+                        </div>
+                        <div id="search-results" class="search-results hidden"></div>
+                    </div>
+
+                    <div class="quick-links">
+                        <h3>인기 검색 기업</h3>
+                        <div class="quick-link-list">
+                            <button class="quick-link-btn" data-corp="00126380" data-name="삼성전자" data-corp-name-eng="Samsung Electronics" data-stock-code="005930" data-industry="반도체 제조업">삼성전자</button>
+                            <button class="quick-link-btn" data-corp="00164779" data-name="SK하이닉스" data-corp-name-eng="SK Hynix" data-stock-code="000660" data-industry="반도체 제조업">SK하이닉스</button>
+                            <button class="quick-link-btn" data-corp="00168676" data-name="NAVER" data-corp-name-eng="NAVER Corporation" data-stock-code="035420" data-industry="인터넷 서비스업">NAVER</button>
+                            <button class="quick-link-btn" data-corp="00113885" data-name="현대자동차" data-corp-name-eng="Hyundai Motor" data-stock-code="005380" data-industry="자동차 제조업">현대자동차</button>
+                            <button class="quick-link-btn" data-corp="00101517" data-name="LG전자" data-corp-name-eng="LG Electronics" data-stock-code="066570" data-industry="전자제품 제조업">LG전자</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="features">
+                    <div class="feature-card">
+                        <div class="feature-icon">📈</div>
+                        <h3>KPI 자동 계산</h3>
+                        <p>ROA, ROE, 부채비율 등 핵심 재무지표를 자동으로 계산합니다.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚠️</div>
+                        <h3>취약점 분석</h3>
+                        <p>Rule Engine 기반으로 재무 위험 요소를 탐지합니다.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h3>시각화 대시보드</h3>
+                        <p>직관적인 차트와 그래프로 재무 상태를 한눈에 파악합니다.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📄</div>
+                        <h3>상세 리포트</h3>
+                        <p>분석 결과를 종합하여 전문적인 리포트를 제공합니다.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 대시보드 화면 -->
+        <section id="dashboard-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title" id="dashboard-company-name">기업 재무 대시보드</h1>
+                        <p class="page-subtitle" id="dashboard-company-info">기업 정보</p>
+                    </div>
+                    <button class="btn-secondary" id="change-company-btn">기업 변경</button>
+                </div>
+
+                <!-- KPI 카드 -->
+                <div class="kpi-cards">
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-label">ROA</span>
+                            <span class="kpi-badge" id="roa-badge">-</span>
+                        </div>
+                        <div class="kpi-value" id="roa-value">-</div>
+                        <div class="kpi-description">총자산순이익률</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-label">ROE</span>
+                            <span class="kpi-badge" id="roe-badge">-</span>
+                        </div>
+                        <div class="kpi-value" id="roe-value">-</div>
+                        <div class="kpi-description">자기자본순이익률</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-label">부채비율</span>
+                            <span class="kpi-badge" id="debt-badge">-</span>
+                        </div>
+                        <div class="kpi-value" id="debt-value">-</div>
+                        <div class="kpi-description">부채총계 / 자본총계</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-label">유동비율</span>
+                            <span class="kpi-badge" id="current-badge">-</span>
+                        </div>
+                        <div class="kpi-value" id="current-value">-</div>
+                        <div class="kpi-description">유동자산 / 유동부채</div>
+                    </div>
+                </div>
+
+                <!-- 차트 섹션 -->
+                <div class="chart-section">
+                    <div class="chart-container">
+                        <h3>수익성 지표</h3>
+                        <canvas id="profitability-chart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>재무구조 지표</h3>
+                        <canvas id="financial-structure-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 트렌드 분석 -->
+                <div class="trend-section">
+                    <h3>전년 대비 증감</h3>
+                    <div class="trend-cards" id="trend-cards">
+                        <!-- JavaScript로 동적 생성 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 재무제표 화면 -->
+        <section id="financial-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">재무제표</h1>
+                        <p class="page-subtitle" id="financial-company-name">-</p>
+                    </div>
+                    <button class="btn-secondary" onclick="navigateTo('search')">기업 변경</button>
+                </div>
+
+                <!-- 재무제표 탭 -->
+                <div style="margin-bottom: 2rem;">
+                    <div style="display: flex; gap: 1rem; border-bottom: 2px solid #e0e0e0;">
+                        <button id="tab-balance" class="financial-tab active" onclick="switchFinancialTab('balance')">
+                            재무상태표
+                        </button>
+                        <button id="tab-income" class="financial-tab" onclick="switchFinancialTab('income')">
+                            포괄손익계산서
+                        </button>
+                        <button id="tab-cashflow" class="financial-tab" onclick="switchFinancialTab('cashflow')">
+                            현금흐름표
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 재무제표 내용 -->
+                <div id="financial-content">
+                    <!-- JavaScript로 동적 생성 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 취약점 분석 화면 -->
+        <section id="weakness-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">취약점 상세 분석</h1>
+                        <p class="page-subtitle" id="weakness-company-name">-</p>
+                    </div>
+                </div>
+
+                <!-- KPI 비교 테이블 -->
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem; color: var(--text-primary);">📊 재무지표 업종 비교</h3>
+                    <div id="kpi-comparison" style="background: var(--bg-secondary); padding: 1.5rem; border-radius: var(--radius-md);">
+                        <!-- JavaScript로 동적 생성 -->
+                    </div>
+                </div>
+
+                <!-- 위험도 카드 -->
+                <div class="risk-overview">
+                    <div class="risk-card">
+                        <div class="risk-level" id="risk-level">
+                            <div class="risk-indicator" id="risk-indicator"></div>
+                            <div class="risk-info">
+                                <div class="risk-label" id="risk-label">분석 중...</div>
+                                <div class="risk-score">위험도 점수: <span id="risk-score">-</span></div>
+                            </div>
+                        </div>
+                        <div class="risk-message" id="risk-message">데이터를 불러오는 중입니다...</div>
+                    </div>
+
+                    <div class="risk-stats">
+                        <div class="stat-item">
+                            <div class="stat-value critical" id="critical-count">0</div>
+                            <div class="stat-label">심각</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value warning" id="warning-count">0</div>
+                            <div class="stat-label">경고</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value info" id="info-count">0</div>
+                            <div class="stat-label">정보</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 취약점 목록 -->
+                <div class="weakness-list">
+                    <h3>발견된 취약점</h3>
+                    <div id="weakness-items">
+                        <!-- JavaScript로 동적 생성 -->
+                    </div>
+                </div>
+
+                <!-- 개선 우선순위 -->
+                <div class="priorities-section">
+                    <h3>개선 우선순위</h3>
+                    <div id="priority-list">
+                        <!-- JavaScript로 동적 생성 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 보고서 화면 -->
+        <section id="report-page" class="page">
+            <div class="container">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">종합 분석 보고서</h1>
+                        <p class="page-subtitle" id="report-company-name">-</p>
+                    </div>
+                    <button class="btn-primary" id="download-report-btn">📥 PDF 다운로드</button>
+                </div>
+
+                <div class="report-content" id="report-content">
+                    <div class="loading">보고서를 생성하는 중입니다...</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 푸터 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 DART Financial Analyzer. All rights reserved.</p>
+            <p>본 시스템은 금융감독원 전자공시시스템(DART) Open API를 활용합니다.</p>
+        </div>
+    </footer>
+
+    <!-- 로딩 오버레이 -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p>데이터를 불러오는 중입니다...</p>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
