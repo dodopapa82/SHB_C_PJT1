@@ -136,15 +136,36 @@ def get_kpi_analysis(corp_code):
         else:
             financial_data = DARTApi('sample').get_financial_statement(corp_code, year)
         
-        # KPI 계산
+        # 업종 정보 가져오기 (기업 정보에서)
+        industry = config.DEFAULT_INDUSTRY
+        try:
+            if dart_api:
+                company_info = dart_api.get_company_info(corp_code)
+                industry = company_info.get('industry', config.DEFAULT_INDUSTRY) if company_info else config.DEFAULT_INDUSTRY
+            else:
+                company_info = DARTApi('sample').get_company_info(corp_code)
+                industry = company_info.get('industry', config.DEFAULT_INDUSTRY) if company_info else config.DEFAULT_INDUSTRY
+        except Exception as e:
+            print(f"⚠️  업종 정보 가져오기 실패: {e}")
+        
+        print(f"📊 [KPI 분석] corp_code={corp_code}, year={year}, industry={industry}")
+        
+        # KPI 계산 (업종 정보 전달)
         calculator = KPICalculator(financial_data)
-        kpis = calculator.calculate_all_kpis()
+        kpis = calculator.calculate_all_kpis(industry)
         trends = calculator.get_trend_analysis()
+        
+        print(f"✅ [KPI 분석] 계산된 KPI 키: {list(kpis.keys())}")
+        if industry == '은행업':
+            print(f"   - NIM 값: {kpis.get('nim', {}).get('value', 'N/A')}")
+            print(f"   - debt_ratio 존재: {'debt_ratio' in kpis}")
+            print(f"   - current_ratio 존재: {'current_ratio' in kpis}")
         
         return jsonify({
             'status': 'success',
             'corp_code': corp_code,
             'year': year,
+            'industry': industry,
             'kpis': kpis,
             'trends': trends
         })
@@ -165,6 +186,8 @@ def get_weakness_analysis(corp_code):
     year = request.args.get('year', config.DEFAULT_YEAR, type=int)
     industry = request.args.get('industry', config.DEFAULT_INDUSTRY)
     
+    print(f"🔍 [취약점 분석] corp_code={corp_code}, year={year}, industry={industry}")
+    
     try:
         # 재무제표 조회
         if dart_api:
@@ -172,20 +195,23 @@ def get_weakness_analysis(corp_code):
         else:
             financial_data = DARTApi('sample').get_financial_statement(corp_code, year)
         
-        # KPI 계산
+        # KPI 계산 (업종 정보 전달)
         calculator = KPICalculator(financial_data)
-        kpis = calculator.calculate_all_kpis()
+        kpis = calculator.calculate_all_kpis(industry)
         
         # 취약점 분석
         analyzer = WeaknessAnalyzer(kpis, industry)
         analysis_result = analyzer.analyze_all()
         priorities = analyzer.get_improvement_priorities()
         
+        print(f"✅ [취약점 분석] 사용된 업종: {analyzer.industry}, 벤치마크: {analyzer.benchmark}")
+        
         return jsonify({
             'status': 'success',
             'corp_code': corp_code,
             'year': year,
-            'industry': industry,
+            'industry': analyzer.industry,  # 실제 사용된 업종
+            'industry_requested': industry,  # 요청된 업종
             'analysis': analysis_result,
             'priorities': priorities
         })
@@ -206,6 +232,8 @@ def get_comprehensive_report(corp_code):
     year = request.args.get('year', config.DEFAULT_YEAR, type=int)
     industry = request.args.get('industry', config.DEFAULT_INDUSTRY)
     
+    print(f"📊 [종합 리포트] corp_code={corp_code}, year={year}, industry={industry}")
+    
     try:
         # 기업 정보
         if dart_api:
@@ -216,15 +244,17 @@ def get_comprehensive_report(corp_code):
             company_info = api.get_company_info(corp_code)
             financial_data = api.get_financial_statement(corp_code, year)
         
-        # KPI 계산
+        # KPI 계산 (업종 정보 전달)
         calculator = KPICalculator(financial_data)
-        kpis = calculator.calculate_all_kpis()
+        kpis = calculator.calculate_all_kpis(industry)
         trends = calculator.get_trend_analysis()
         
         # 취약점 분석
         analyzer = WeaknessAnalyzer(kpis, industry)
         analysis = analyzer.analyze_all()
         priorities = analyzer.get_improvement_priorities()
+        
+        print(f"✅ [종합 리포트] 사용된 업종: {analyzer.industry}, 벤치마크: {analyzer.benchmark}")
         
         # 종합 리포트
         report = {

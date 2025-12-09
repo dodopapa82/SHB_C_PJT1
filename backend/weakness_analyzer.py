@@ -61,12 +61,10 @@ class WeaknessAnalyzer:
             'net_profit_margin': 16.0
         },
         '은행업': {
-            'roa': 0.6,              # 금융업 특성
-            'roe': 8.0,
-            'debt_ratio': 1000.0,    # 금융업은 부채비율이 매우 높음
-            'current_ratio': 100.0,
-            'operating_margin': 35.0,
-            'net_profit_margin': 25.0
+            'roa': 0.6,              # 총자산순이익률
+            'roe': 8.0,              # 자기자본순이익률
+            'operating_margin': 35.0, # 영업이익률
+            'nim': 1.8,              # 순이자마진 (NIM) - 은행 핵심 지표
         },
         '증권업': {
             'roa': 1.2,
@@ -162,6 +160,19 @@ class WeaknessAnalyzer:
         self.historical_data = historical_data or []
         self.benchmark = self.INDUSTRY_BENCHMARKS.get(industry, self.INDUSTRY_BENCHMARKS['default'])
         self.weaknesses = []
+        
+        # 디버깅: 선택된 벤치마크 확인
+        benchmark_used = '사용자 지정 업종' if industry in self.INDUSTRY_BENCHMARKS else 'default 업종'
+        print(f"📊 [WeaknessAnalyzer] 업종: {industry} ({benchmark_used})")
+        if industry == '은행업':
+            print(f"   - ROA 기준: {self.benchmark.get('roa', 'N/A')}%")
+            print(f"   - ROE 기준: {self.benchmark.get('roe', 'N/A')}%")
+            print(f"   - NIM 기준: {self.benchmark.get('nim', 'N/A')}%")
+            print(f"   - 영업이익률 기준: {self.benchmark.get('operating_margin', 'N/A')}%")
+        else:
+            print(f"   - ROA 기준: {self.benchmark.get('roa', 'N/A')}%")
+            print(f"   - ROE 기준: {self.benchmark.get('roe', 'N/A')}%")
+            print(f"   - 부채비율 기준: {self.benchmark.get('debt_ratio', 'N/A')}%")
     
     def analyze_all(self) -> Dict:
         """
@@ -173,9 +184,19 @@ class WeaknessAnalyzer:
         self.weaknesses = []
         
         # Rule 기반 취약점 검사
-        self._check_high_debt_ratio()
-        self._check_low_profitability()
-        self._check_liquidity_risk()
+        if self.industry == '은행업':
+            # 은행 특화 지표 검사 (ROA, ROE, NIM, 영업이익률)
+            self._check_bank_roa()
+            self._check_bank_roe()
+            self._check_bank_nim()
+            self._check_bank_operating_margin()
+        else:
+            # 일반 업종 지표 검사
+            self._check_high_debt_ratio()
+            self._check_liquidity_risk()
+            self._check_low_profitability()
+        
+        # 공통 검사 (모든 업종)
         self._check_declining_trend()
         self._check_negative_cashflow()
         
@@ -194,8 +215,17 @@ class WeaknessAnalyzer:
     
     def _check_high_debt_ratio(self):
         """Rule R01: 높은 부채비율 검사"""
+        # 은행업은 부채비율 검사하지 않음
+        if self.industry == '은행업':
+            return
+        
         debt_ratio = self.kpis.get('debt_ratio', {})
         value = debt_ratio.get('value', 0)
+        
+        # 벤치마크에 debt_ratio가 없으면 검사하지 않음
+        if 'debt_ratio' not in self.benchmark:
+            return
+            
         benchmark = self.benchmark['debt_ratio']
         
         if value > benchmark * 1.2:  # 업종평균 + 20%
@@ -225,6 +255,10 @@ class WeaknessAnalyzer:
     
     def _check_low_profitability(self):
         """Rule R04: 낮은 수익성 검사"""
+        # 은행업은 별도의 은행 특화 검사 사용
+        if self.industry == '은행업':
+            return
+        
         roa = self.kpis.get('roa', {})
         roe = self.kpis.get('roe', {})
         operating_margin = self.kpis.get('operating_margin', {})
@@ -277,8 +311,16 @@ class WeaknessAnalyzer:
     
     def _check_liquidity_risk(self):
         """유동성 위험 검사"""
+        # 은행업은 유동비율 검사하지 않음
+        if self.industry == '은행업':
+            return
+        
         current_ratio = self.kpis.get('current_ratio', {})
         value = current_ratio.get('value', 0)
+        
+        # 벤치마크에 current_ratio가 없으면 검사하지 않음
+        if 'current_ratio' not in self.benchmark:
+            return
         
         if value < 100:  # 유동비율 100% 미만
             self.weaknesses.append({
@@ -292,7 +334,7 @@ class WeaknessAnalyzer:
                 'recommendation': '단기 자금 조달 계획을 마련하고 유동자산을 확보해야 합니다.',
                 'impact': '단기 채무 상환 능력이 부족하여 유동성 위기 가능성이 있습니다.'
             })
-        elif value < self.benchmark['current_ratio'] * 0.8:
+        elif 'current_ratio' in self.benchmark and value < self.benchmark['current_ratio'] * 0.8:
             self.weaknesses.append({
                 'rule_id': 'R05',
                 'title': '유동성 주의 필요',
@@ -332,6 +374,130 @@ class WeaknessAnalyzer:
         # 샘플 데이터에서는 현금흐름 정보가 제한적이므로 
         # 실제 데이터가 있을 때 구현
         pass
+    
+    def _check_bank_roa(self):
+        """은행 특화: ROA 검사"""
+        roa = self.kpis.get('roa', {})
+        value = roa.get('value', 0)
+        benchmark = self.benchmark.get('roa', 0.6)
+        
+        if value < benchmark * 0.5:  # 업종평균의 50% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-01',
+                'title': '낮은 ROA (총자산이익률)',
+                'severity': 'critical',
+                'category': '수익성',
+                'description': f'ROA가 {value:.2f}%로 업종평균({benchmark:.2f}%)의 절반에도 미치지 못합니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': '자산 활용도를 높이고 수익성 개선 방안을 마련해야 합니다.',
+                'impact': '낮은 ROA는 자산 운용의 비효율성을 나타냅니다.'
+            })
+        elif value < benchmark * 0.8:  # 업종평균의 80% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-01',
+                'title': 'ROA 주의',
+                'severity': 'warning',
+                'category': '수익성',
+                'description': f'ROA가 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': 'ROA 개선을 위한 자산 운용 효율화가 필요합니다.',
+                'impact': 'ROA 저하는 수익성 악화를 의미합니다.'
+            })
+    
+    def _check_bank_roe(self):
+        """은행 특화: ROE 검사"""
+        roe = self.kpis.get('roe', {})
+        value = roe.get('value', 0)
+        benchmark = self.benchmark.get('roe', 8.0)
+        
+        if value < benchmark * 0.5:  # 업종평균의 50% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-02',
+                'title': '낮은 ROE (자기자본이익률)',
+                'severity': 'critical',
+                'category': '수익성',
+                'description': f'ROE가 {value:.2f}%로 업종평균({benchmark:.2f}%)의 절반에도 미치지 못합니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': '자본 효율성을 높이고 순이익 증대 전략이 필요합니다.',
+                'impact': '낮은 ROE는 주주 가치 창출 능력이 부족함을 의미합니다.'
+            })
+        elif value < benchmark * 0.8:  # 업종평균의 80% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-02',
+                'title': 'ROE 주의',
+                'severity': 'warning',
+                'category': '수익성',
+                'description': f'ROE가 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': 'ROE 개선을 위한 자본 효율성 향상이 필요합니다.',
+                'impact': 'ROE 저하는 주주 가치 창출 능력 저하를 의미합니다.'
+            })
+    
+    def _check_bank_nim(self):
+        """은행 특화: NIM (순이자마진) 검사"""
+        nim = self.kpis.get('nim', {})
+        value = nim.get('value', 0)
+        benchmark = self.benchmark.get('nim', 1.8)
+        
+        if value < benchmark * 0.5:  # 업종평균의 50% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-03',
+                'title': '낮은 NIM (순이자마진)',
+                'severity': 'critical',
+                'category': '수익성',
+                'description': f'NIM이 {value:.2f}%로 업종평균({benchmark:.2f}%)의 절반에도 미치지 못합니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': '이자수익 증대 및 이자비용 절감 방안을 마련해야 합니다.',
+                'impact': '낮은 NIM은 은행의 핵심 수익원인 이자마진이 부족함을 의미합니다.'
+            })
+        elif value < benchmark * 0.8:  # 업종평균의 80% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-03',
+                'title': 'NIM 주의',
+                'severity': 'warning',
+                'category': '수익성',
+                'description': f'NIM이 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': 'NIM 개선을 위한 이자수익 구조 개선이 필요합니다.',
+                'impact': 'NIM 저하는 은행의 핵심 수익성 악화를 의미합니다.'
+            })
+    
+    def _check_bank_operating_margin(self):
+        """은행 특화: 영업이익률 검사"""
+        operating_margin = self.kpis.get('operating_margin', {})
+        value = operating_margin.get('value', 0)
+        benchmark = self.benchmark.get('operating_margin', 35.0)
+        
+        if value < benchmark * 0.5:  # 업종평균의 50% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-04',
+                'title': '낮은 영업이익률',
+                'severity': 'critical',
+                'category': '수익성',
+                'description': f'영업이익률이 {value:.2f}%로 업종평균({benchmark:.2f}%)의 절반에도 미치지 못합니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': '영업이익 개선을 위한 비용 절감 및 수익 증대 전략이 필요합니다.',
+                'impact': '낮은 영업이익률은 은행의 핵심 사업 경쟁력 약화를 시사합니다.'
+            })
+        elif value < benchmark * 0.8:  # 업종평균의 80% 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-04',
+                'title': '영업이익률 주의',
+                'severity': 'warning',
+                'category': '수익성',
+                'description': f'영업이익률이 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': '영업이익률 개선을 위한 운영 효율화가 필요합니다.',
+                'impact': '영업이익률 저하는 핵심 사업의 수익성 악화를 의미합니다.'
+            })
     
     def _calculate_risk_level(self) -> Dict:
         """

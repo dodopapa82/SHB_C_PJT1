@@ -97,29 +97,88 @@ for i in {1..10}; do
 done
 echo ""
 
-# 6. 프론트엔드 열기
+# 6. 포트 8080 확인 및 정리
+echo "📌 포트 8080 확인 중..."
+if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  포트 8080이 이미 사용 중입니다. 기존 프로세스를 종료합니다...${NC}"
+    lsof -ti:8080 | xargs kill -9 2>/dev/null
+    sleep 1
+    echo -e "${GREEN}✅ 포트 정리 완료${NC}"
+else
+    echo -e "${GREEN}✅ 포트 8080 사용 가능${NC}"
+fi
+echo ""
+
+# 7. 프론트엔드 서버 시작
 echo "=================================="
-echo "🌐 프론트엔드 브라우저 열기"
+echo "🌐 프론트엔드 서버 시작 중..."
+echo "=================================="
+cd frontend
+
+# 프론트엔드 서버를 백그라운드에서 실행하고 PID 저장
+python3 -m http.server 8080 > ../frontend.log 2>&1 &
+FRONTEND_PID=$!
+echo $FRONTEND_PID > ../frontend.pid
+
+cd ..
+
+# 프론트엔드 서버가 준비될 때까지 대기
+echo "프론트엔드 서버 시작 대기 중..."
+for i in {1..5}; do
+    if curl -s http://localhost:8080 > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ 프론트엔드 서버 시작 완료!${NC}"
+        echo "   URL: http://localhost:8080"
+        break
+    fi
+    if [ $i -eq 5 ]; then
+        echo -e "${RED}❌ 프론트엔드 서버 시작 실패. frontend.log를 확인해주세요.${NC}"
+        exit 1
+    fi
+    sleep 1
+    echo "   대기 중... ($i/5)"
+done
+echo ""
+
+# 8. 브라우저 열기
+echo "=================================="
+echo "🌐 브라우저 열기"
 echo "=================================="
 sleep 1
-open frontend/index.html
+
+# OS별 브라우저 열기
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    open http://localhost:8080
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    xdg-open http://localhost:8080 2>/dev/null || sensible-browser http://localhost:8080 2>/dev/null
+elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+    # Windows
+    start http://localhost:8080
+else
+    echo -e "${YELLOW}⚠️  브라우저를 자동으로 열 수 없습니다.${NC}"
+    echo "수동으로 http://localhost:8080 을 열어주세요."
+fi
+
 echo -e "${GREEN}✅ 브라우저에서 프론트엔드를 열었습니다!${NC}"
 echo ""
 
-# 7. 완료 메시지
+# 9. 완료 메시지
 echo "=================================="
 echo "✨ 시스템 시작 완료!"
 echo "=================================="
 echo ""
 echo "📡 백엔드 서버: http://localhost:5001"
-echo "🌐 프론트엔드: frontend/index.html"
-echo "📝 서버 로그: server.log"
-echo "🔢 서버 PID: $SERVER_PID (server.pid에 저장됨)"
+echo "🌐 프론트엔드: http://localhost:8080"
+echo "📝 백엔드 로그: server.log"
+echo "📝 프론트엔드 로그: frontend.log"
+echo "🔢 백엔드 PID: $SERVER_PID (server.pid에 저장됨)"
+echo "🔢 프론트엔드 PID: $FRONTEND_PID (frontend.pid에 저장됨)"
 echo ""
 echo "서버를 종료하려면 다음 명령을 실행하세요:"
 echo "  ./stop.sh"
 echo "또는:"
-echo "  kill $SERVER_PID"
+echo "  kill $SERVER_PID $FRONTEND_PID"
 echo ""
 echo -e "${GREEN}🎉 준비 완료! 브라우저에서 기업을 검색해보세요!${NC}"
 echo ""

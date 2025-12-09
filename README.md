@@ -120,7 +120,7 @@ python3 app.py
 | `PORT` | 서버 포트 | 5001 |
 | `DEBUG` | 디버그 모드 | True |
 | `DEFAULT_YEAR` | 기본 분석 연도 | 전년도 |
-| `DEFAULT_INDUSTRY` | 기본 업종 | default |
+| `DEFAULT_INDUSTRY` | 기본 업종 | 은행업 |
 | `MAX_SEARCH_RESULTS` | 최대 검색 결과 | 20 |
 | `CACHE_DURATION_DAYS` | 캐시 유지 기간 (일) | 1 |
 

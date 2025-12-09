@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 연결 테스트</title>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-item {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #0047FF;
+            color: white;
+            font-size: 14px;
+        }
+        button:hover { background-color: #0036CC; }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 DART API 연결 테스트</h1>
+    
+    <div class="test-item">
+        <h3>1. 백엔드 서버 상태</h3>
+        <button onclick="testBackendStatus()">서버 상태 확인</button>
+        <div id="result-status"></div>
+    </div>
+    
+    <div class="test-item">
+        <h3>2. 기업 검색 테스트</h3>
+        <button onclick="testSearch('삼성전자')">삼성전자 검색</button>
+        <button onclick="testSearch('신한은행')">신한은행 검색</button>
+        <div id="result-search"></div>
+    </div>
+    
+    <div class="test-item">
+        <h3>3. 기업 정보 조회 테스트</h3>
+        <button onclick="testCompanyInfo('00126380')">삼성전자 정보</button>
+        <button onclick="testCompanyInfo('00149293')">신한은행 정보</button>
+        <div id="result-company"></div>
+    </div>
+    
+    <div class="test-item">
+        <h3>4. KPI 분석 테스트</h3>
+        <button onclick="testKPI('00126380')">삼성전자 KPI</button>
+        <button onclick="testKPI('00149293')">신한은행 KPI</button>
+        <div id="result-kpi"></div>
+    </div>
+    
+    <div class="test-item">
+        <h3>5. 취약점 분석 테스트</h3>
+        <button onclick="testWeakness('00126380')">삼성전자 취약점</button>
+        <button onclick="testWeakness('00149293')">신한은행 취약점</button>
+        <div id="result-weakness"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5001/api';
+
+        async function testAPI(url, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.innerHTML = '<p>⏳ 로딩 중...</p>';
+            
+            try {
+                console.log('🔄 API 호출:', url);
+                const response = await fetch(url);
+                console.log('📡 응답 상태:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ 응답 데이터:', data);
+                
+                resultDiv.className = 'test-item success';
+                resultDiv.innerHTML = `
+                    <p>✅ <strong>성공</strong></p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('❌ 에러:', error);
+                resultDiv.className = 'test-item error';
+                resultDiv.innerHTML = `
+                    <p>❌ <strong>실패</strong></p>
+                    <p>에러: ${error.message}</p>
+                `;
+            }
+        }
+
+        function testBackendStatus() {
+            testAPI('http://localhost:5001/', 'result-status');
+        }
+
+        function testSearch(query) {
+            testAPI(`${API_BASE}/search?q=${encodeURIComponent(query)}`, 'result-search');
+        }
+
+        function testCompanyInfo(corpCode) {
+            testAPI(`${API_BASE}/company/${corpCode}`, 'result-company');
+        }
+
+        function testKPI(corpCode) {
+            testAPI(`${API_BASE}/kpi/${corpCode}`, 'result-kpi');
+        }
+
+        function testWeakness(corpCode) {
+            testAPI(`${API_BASE}/weakness/${corpCode}`, 'result-weakness');
+        }
+
+        // 페이지 로드 시 자동 테스트
+        window.onload = function() {
+            console.log('🚀 테스트 페이지 로드 완료');
+            console.log('📡 API Base URL:', API_BASE);
+        };
+    </script>
+</body>
+</html>
+

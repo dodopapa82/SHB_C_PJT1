@@ -25,16 +25,67 @@ class DARTApi:
     _cache_duration = timedelta(days=config.CACHE_DURATION_DAYS)
     
     # 업종 코드 매핑 (KSIC 코드 기반)
+    # KSIC(한국표준산업분류) 코드 → 취약점 분석 업종명 매핑
     INDUSTRY_MAP = {
-        '26': '전자부품, 컴퓨터, 영상, 음향 및 통신장비 제조업',
-        '264': '통신 및 방송 장비 제조업',
-        '2641': '유선 통신장비 제조업',
+        # 금융업
+        '641': '은행업',
+        '6411': '은행업',
+        '64111': '중앙은행',
+        '64121': '은행업',  # 일반은행 (신한은행, 국민은행 등)
+        '64122': '은행업',  # 특수은행
+        '642': '증권업',
+        '6421': '증권업',
+        '643': '보험업',
+        '6431': '보험업',
+        '644': '금융 지주회사',
+        '6441': '금융 지주회사',
+        
+        # 제조업
+        '26': '전자제품 제조업',
+        '261': '반도체 제조업',
+        '2611': '반도체 제조업',
+        '264': '전자제품 제조업',
+        '2641': '전자제품 제조업',
         '29': '기타 기계 및 장비 제조업',
-        '30': '자동차 및 트레일러 제조업',
+        '30': '자동차 제조업',
+        '301': '자동차 제조업',
+        '21': '화학물질 및 화학제품 제조업',
+        '24': '이차전지 제조업',
+        '10': '식료품 제조업',
+        '11': '음료 제조업',
+        '21': '의약품 제조업',
+        
+        # IT/통신
         '58': '출판업',
         '62': '컴퓨터 프로그래밍, 시스템 통합 및 관리업',
+        '620': '인터넷 서비스업',
+        '6201': '인터넷 서비스업',
         '63': '정보서비스업',
-        '72': '건축기술, 엔지니어링 및 기타 과학기술 서비스업'
+        '631': '인터넷 서비스업',
+        '6311': '인터넷 서비스업',
+        '61': '전기 통신업',
+        '612': '전기 통신업',
+        '6121': '전기 통신업',
+        
+        # 건설/부동산
+        '41': '종합 건설업',
+        '411': '종합 건설업',
+        '42': '종합 건설업',
+        '72': '건축기술, 엔지니어링 및 기타 과학기술 서비스업',
+        
+        # 운수업
+        '51': '항공 운송업',
+        '511': '항공 운송업',
+        '50': '해상 운송업',
+        
+        # 도소매업
+        '52': '종합 소매업',
+        '521': '종합 소매업',
+        
+        # 게임/엔터테인먼트
+        '58212': '게임 소프트웨어 개발 및 공급업',
+        '59': '방송업',
+        '591': '방송업'
     }
     
     def __init__(self, api_key: Optional[str] = None):
@@ -123,6 +174,8 @@ class DARTApi:
         """
         # 키워드 기반 업종 매핑
         industry_keywords = {
+            '지주': '금융 지주회사',
+            '홀딩스': '지주회사',
             '반도체': '반도체 제조업',
             '전자': '전자제품 제조업',
             '하이닉스': '반도체 제조업',
@@ -166,9 +219,65 @@ class DARTApi:
         # 기본값
         return '제조업'
     
+    def _map_industry_code(self, industry_code: str, corp_name: str = '') -> str:
+        """
+        KSIC 업종 코드를 취약점 분석 업종명으로 매핑
+        
+        Args:
+            industry_code: KSIC 업종 코드 (예: 64121)
+            corp_name: 기업명 (보조 판단용)
+            
+        Returns:
+            매핑된 업종명
+        """
+        if not industry_code:
+            # 코드가 없으면 기업명으로 추정
+            return self._guess_industry(corp_name) if corp_name else '제조업'
+        
+        # KSIC 코드를 문자열로 변환
+        code_str = str(industry_code).strip()
+        
+        # 전체 코드로 먼저 매칭 시도 (예: 64121)
+        if code_str in self.INDUSTRY_MAP:
+            matched = self.INDUSTRY_MAP[code_str]
+            print(f"🏭 업종 코드 매핑: {code_str} → {matched}")
+            return matched
+        
+        # 상위 코드로 단계적 매칭 (64121 → 6412 → 641 → 64)
+        for i in range(len(code_str) - 1, 0, -1):
+            partial_code = code_str[:i]
+            if partial_code in self.INDUSTRY_MAP:
+                matched = self.INDUSTRY_MAP[partial_code]
+                print(f"🏭 업종 코드 매핑: {code_str} ({partial_code}) → {matched}")
+                return matched
+        
+        # 매칭 실패 시 기업명으로 추정
+        if corp_name:
+            guessed = self._guess_industry(corp_name)
+            print(f"🏭 업종 코드 매핑 실패 ({code_str}), 기업명({corp_name})으로 추정 → {guessed}")
+            return guessed
+        
+        # 최종 기본값
+        print(f"⚠️  업종 코드 매핑 실패 ({code_str}), 기본값 사용 → 제조업")
+        return '제조업'
+    
     def _get_sample_companies(self) -> List[Dict]:
         """샘플 기업 데이터 반환"""
         return [
+            {
+                'corp_code': '00382199',
+                'corp_name': '신한지주',
+                'corp_name_eng': 'Shinhan Financial Group',
+                'stock_code': '055550',
+                'industry': '금융 지주회사'
+            },
+            {
+                'corp_code': '00149293',
+                'corp_name': '신한은행',
+                'corp_name_eng': 'Shinhan Bank',
+                'stock_code': '000010',
+                'industry': '은행업'
+            },
             {
                 'corp_code': '00126380',
                 'corp_name': '삼성전자',
@@ -184,21 +293,21 @@ class DARTApi:
                 'industry': '반도체 제조업'
             },
             {
-                'corp_code': '00101517',
+                'corp_code': '00401731',
                 'corp_name': 'LG전자',
                 'corp_name_eng': 'LG Electronics',
                 'stock_code': '066570',
                 'industry': '전자제품 제조업'
             },
             {
-                'corp_code': '00113885',
+                'corp_code': '00164742',
                 'corp_name': '현대자동차',
                 'corp_name_eng': 'Hyundai Motor',
                 'stock_code': '005380',
                 'industry': '자동차 제조업'
             },
             {
-                'corp_code': '00168676',
+                'corp_code': '00266961',
                 'corp_name': 'NAVER',
                 'corp_name_eng': 'NAVER Corporation',
                 'stock_code': '035420',
@@ -283,8 +392,8 @@ class DARTApi:
         """
         print(f"📊 재무제표 조회: corp_code={corp_code}, year={year}, report_code={report_code}")
         
-        # 실제 DART API 사용 시도
-        if not self.use_sample:
+        # 실제 DART API 사용 시도 (최우선)
+        if self.api_key:  # API 키가 있으면 무조건 API 먼저 시도
             try:
                 print(f"🔄 DART API 호출 중...")
                 financial_data = self._fetch_dart_financial_statement(corp_code, year, report_code)
@@ -292,13 +401,70 @@ class DARTApi:
                     print(f"✅ DART API에서 재무제표 조회 성공")
                     return financial_data
                 else:
-                    print(f"⚠️  DART API 응답 오류, 샘플 데이터 사용")
+                    print(f"⚠️  DART API 응답 오류 (status: {financial_data.get('status') if financial_data else 'None'}), 생성 데이터 사용")
             except Exception as e:
-                print(f"⚠️  DART API 오류: {e}, 샘플 데이터 사용")
+                print(f"⚠️  DART API 호출 실패: {e}, 생성 데이터 사용")
+        else:
+            print(f"⚠️  DART API 키가 없음, 생성 데이터 사용")
         
-        # 샘플 데이터 생성
+        # 기업별 맞춤 재무 데이터 생성 (API 실패 시)
+        print(f"📊 기업 코드 기반 재무 데이터 생성 중...")
         financial_data = self._generate_financial_data(corp_code, year)
         return financial_data
+    
+    def _fetch_dart_company_info(self, corp_code: str) -> Dict:
+        """
+        DART API에서 기업 개황 조회
+        
+        Args:
+            corp_code: 기업 고유번호
+            
+        Returns:
+            기업 개황 정보
+        """
+        url = f"{self.BASE_URL}/company.json"
+        params = {
+            'crtfc_key': self.api_key,
+            'corp_code': corp_code
+        }
+        
+        print(f"📡 DART API 기업 개황 요청: {url}")
+        print(f"📋 파라미터: corp_code={corp_code}")
+        
+        response = requests.get(url, params=params, timeout=config.REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        if result.get('status') != '000':
+            print(f"⚠️  DART API 오류: {result.get('message')}")
+            return None
+        
+        print(f"✅ DART API 성공: {result.get('corp_name')}, CEO: {result.get('ceo_nm')}")
+        
+        # KSIC 업종 코드를 업종명으로 매핑
+        industry_code = result.get('induty_code', '')
+        corp_name = result.get('corp_name', '')
+        industry_name = self._map_industry_code(industry_code, corp_name)
+        
+        # 필요한 정보만 추출하여 반환
+        return {
+            'status': '000',
+            'corp_code': corp_code,
+            'corp_name': corp_name,
+            'corp_name_eng': result.get('corp_name_eng', ''),
+            'stock_code': result.get('stock_code', ''),
+            'ceo_nm': result.get('ceo_nm', 'N/A'),
+            'industry': industry_name,
+            'industry_code': industry_code,  # 원본 코드도 저장
+            'est_dt': result.get('est_dt', ''),
+            'acc_mt': result.get('acc_mt', '12'),
+            'jurir_no': result.get('jurir_no', ''),
+            'bizr_no': result.get('bizr_no', ''),
+            'adres': result.get('adres', ''),
+            'hm_url': result.get('hm_url', ''),
+            'phn_no': result.get('phn_no', '')
+        }
     
     def _fetch_dart_financial_statement(self, corp_code: str, year: int, report_code: str) -> Dict:
         """
@@ -520,7 +686,7 @@ class DARTApi:
     
     def get_company_info(self, corp_code: str) -> Dict:
         """
-        기업 개황 조회
+        기업 개황 조회 (DART API 연동)
         
         Args:
             corp_code: 기업 고유번호
@@ -530,11 +696,26 @@ class DARTApi:
         """
         print(f"📌 기업 정보 조회: corp_code={corp_code}")
         
-        # 1. 캐시에서 기업 정보 찾기 (검색에서 로드한 데이터)
+        # 1. 실제 DART API로 기업 개황 조회 시도 (최우선)
+        if self.api_key:  # API 키가 있으면 무조건 API 먼저 시도
+            try:
+                print(f"🔄 DART API로 기업 개황 조회 중...")
+                company_info = self._fetch_dart_company_info(corp_code)
+                if company_info and company_info.get('status') == '000':
+                    print(f"✅ DART API에서 기업 정보 조회 성공: {company_info.get('corp_name')}, CEO: {company_info.get('ceo_nm')}")
+                    return company_info
+                else:
+                    print(f"⚠️  DART API 응답 오류 (status: {company_info.get('status') if company_info else 'None'})")
+            except Exception as e:
+                print(f"⚠️  DART API 호출 실패: {e}")
+        else:
+            print(f"⚠️  DART API 키가 없음")
+        
+        # 2. 캐시에서 기업 정보 찾기 (API 실패 시)
         if DARTApi._corp_code_cache:
             for company in DARTApi._corp_code_cache:
                 if company.get('corp_code') == corp_code:
-                    print(f"✅ 캐시에서 기업 정보 찾음: {company.get('corp_name')}")
+                    print(f"✅ 캐시에서 기업 정보 찾음: {company.get('corp_name')} (주의: CEO 정보 없음)")
                     return {
                         'corp_code': company.get('corp_code'),
                         'corp_name': company.get('corp_name'),
@@ -546,10 +727,30 @@ class DARTApi:
                         'acc_mt': '12'
                     }
         
-        print(f"⚠️  캐시에서 기업 정보를 찾을 수 없음")
+        print(f"⚠️  캐시에서도 기업 정보를 찾을 수 없음, 샘플 데이터 확인")
         
-        # 2. 샘플 기업 정보 (캐시에 없을 경우)
+        # 3. 샘플 기업 정보 (마지막 fallback - 개발/테스트용)
         sample_companies = {
+            '00382199': {
+                'corp_code': '00382199',
+                'corp_name': '신한지주',
+                'corp_name_eng': 'Shinhan Financial Group',
+                'stock_code': '055550',
+                'ceo_nm': '진옥동',
+                'industry': '금융 지주회사',
+                'est_dt': '20010907',
+                'acc_mt': '12'
+            },
+            '00149293': {
+                'corp_code': '00149293',
+                'corp_name': '신한은행',
+                'corp_name_eng': 'Shinhan Bank',
+                'stock_code': '000010',
+                'ceo_nm': '정상혁',
+                'industry': '은행업',
+                'est_dt': '19820721',
+                'acc_mt': '12'
+            },
             '00126380': {
                 'corp_code': '00126380',
                 'corp_name': '삼성전자',
@@ -570,8 +771,8 @@ class DARTApi:
                 'est_dt': '19830209',
                 'acc_mt': '12'
             },
-            '00101517': {
-                'corp_code': '00101517',
+            '00401731': {
+                'corp_code': '00401731',
                 'corp_name': 'LG전자',
                 'corp_name_eng': 'LG Electronics',
                 'stock_code': '066570',
@@ -580,8 +781,8 @@ class DARTApi:
                 'est_dt': '19581012',
                 'acc_mt': '12'
             },
-            '00113885': {
-                'corp_code': '00113885',
+            '00164742': {
+                'corp_code': '00164742',
                 'corp_name': '현대자동차',
                 'corp_name_eng': 'Hyundai Motor',
                 'stock_code': '005380',
@@ -590,8 +791,8 @@ class DARTApi:
                 'est_dt': '19670301',
                 'acc_mt': '12'
             },
-            '00168676': {
-                'corp_code': '00168676',
+            '00266961': {
+                'corp_code': '00266961',
                 'corp_name': 'NAVER',
                 'corp_name_eng': 'NAVER Corporation',
                 'stock_code': '035420',
@@ -603,11 +804,11 @@ class DARTApi:
         }
         
         if corp_code in sample_companies:
-            print(f"✅ 샘플 데이터 반환: {sample_companies[corp_code]['corp_name']}")
+            print(f"⚠️  샘플 데이터 사용 (개발/테스트용): {sample_companies[corp_code]['corp_name']}, CEO: {sample_companies[corp_code]['ceo_nm']}")
             return sample_companies[corp_code]
         
-        # 3. 기본 정보 반환
-        print(f"⚠️  기본 정보 반환")
+        # 4. 기본 정보 반환 (모든 방법 실패 시)
+        print(f"❌ 모든 방법으로 기업 정보를 찾을 수 없음 - 기본 정보 반환")
         return {
             'corp_code': corp_code,
             'corp_name': f'기업({corp_code})',

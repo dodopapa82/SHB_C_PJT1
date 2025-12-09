@@ -14,7 +14,7 @@ const CONFIG = {
     
     // 기본값 설정
     DEFAULT_YEAR: new Date().getFullYear() - 1, // 전년도
-    DEFAULT_INDUSTRY: 'default',
+    DEFAULT_INDUSTRY: '은행업',
     DEFAULT_REPORT_CODE: '11011',
     
     // 검색 설정
@@ -343,7 +343,33 @@ async function loadDashboard() {
             });
         }
         
+        // KPI 응답에서 업종 정보 업데이트 (API 응답이 더 정확할 수 있음)
+        if (kpiData.industry) {
+            appState.currentIndustry = kpiData.industry;
+            console.log('✅ KPI 응답에서 업종 정보 업데이트:', appState.currentIndustry);
+        }
+        
         appState.kpiData = kpiData;
+        
+        console.log('📊 KPI 데이터 확인:', {
+            industry: kpiData.industry,
+            currentIndustry: appState.currentIndustry,
+            kpiKeys: Object.keys(kpiData.kpis || {}),
+            nim: kpiData.kpis?.nim,
+            debt_ratio: kpiData.kpis?.debt_ratio,
+            current_ratio: kpiData.kpis?.current_ratio
+        });
+        
+        // NIM 데이터 상세 확인 (은행업일 경우)
+        if (appState.currentIndustry === '은행업') {
+            console.log('🏦 은행업 NIM 데이터 상세:', {
+                exists: !!kpiData.kpis?.nim,
+                value: kpiData.kpis?.nim?.value,
+                status: kpiData.kpis?.nim?.status,
+                unit: kpiData.kpis?.nim?.unit,
+                description: kpiData.kpis?.nim?.description
+            });
+        }
         
         console.log('🎨 화면 업데이트 시작...');
         
@@ -401,28 +427,96 @@ function updateDashboardHeader(companyInfo) {
  */
 function updateKPICards(kpis) {
     console.log('📊 KPI 카드 업데이트:', kpis);
+    console.log('   - 업종:', appState.currentIndustry);
+    console.log('   - KPI 키 목록:', Object.keys(kpis || {}));
+    console.log('   - NIM 존재:', 'nim' in (kpis || {}));
+    console.log('   - debt_ratio 존재:', 'debt_ratio' in (kpis || {}));
+    console.log('   - current_ratio 존재:', 'current_ratio' in (kpis || {}));
     
-    // ROA
+    const isBank = appState.currentIndustry === '은행업';
+    console.log('   - isBank:', isBank);
+    
+    // ROA (공통)
     updateKPICard('roa', kpis.roa);
     
-    // ROE
+    // ROE (공통)
     updateKPICard('roe', kpis.roe);
     
-    // 부채비율
-    updateKPICard('debt', kpis.debt_ratio);
-    
-    // 유동비율
-    updateKPICard('current', kpis.current_ratio);
+    if (isBank) {
+        // 은행업: NIM과 영업이익률
+        console.log('   🏦 은행업 모드 - NIM과 영업이익률 표시');
+        console.log('      - NIM 데이터:', kpis.nim);
+        console.log('      - 영업이익률 데이터:', kpis.operating_margin);
+        
+        // NIM이 없거나 에러인 경우 기본값 사용
+        const nimData = kpis.nim || { value: 0, status: 'error', unit: '%', message: '데이터 없음' };
+        updateKPICardWithLabel('debt', nimData, 'NIM', '순이자마진');
+        updateKPICardWithLabel('current', kpis.operating_margin, '영업이익률', '영업이익 / 매출액');
+    } else {
+        // 일반 업종: 부채비율과 유동비율
+        console.log('   🏭 일반 업종 모드 - 부채비율과 유동비율 표시');
+        updateKPICardWithLabel('debt', kpis.debt_ratio, '부채비율', '부채총계 / 자본총계');
+        updateKPICardWithLabel('current', kpis.current_ratio, '유동비율', '유동자산 / 유동부채');
+    }
 }
 
 /**
- * 개별 KPI 카드 업데이트
+ * 개별 KPI 카드 업데이트 (레이블 변경 없음)
  */
 function updateKPICard(id, kpiData) {
+    updateKPICardWithLabel(id, kpiData);
+}
+
+/**
+ * 개별 KPI 카드 업데이트 (레이블 변경 포함)
+ */
+function updateKPICardWithLabel(id, kpiData, label = null, description = null) {
     const valueEl = document.getElementById(`${id}-value`);
     const badgeEl = document.getElementById(`${id}-badge`);
     
-    if (kpiData && kpiData.value !== undefined) {
+    console.log(`🔧 [updateKPICardWithLabel] id=${id}, label=${label}, kpiData=`, kpiData);
+    console.log(`   - valueEl 존재:`, !!valueEl);
+    console.log(`   - badgeEl 존재:`, !!badgeEl);
+    
+    if (!valueEl) {
+        console.error(`❌ KPI 카드 요소를 찾을 수 없음: ${id}-value`);
+        return;
+    }
+    
+    if (!badgeEl) {
+        console.error(`❌ KPI 배지 요소를 찾을 수 없음: ${id}-badge`);
+        return;
+    }
+    
+    // 레이블과 설명 업데이트 (은행업일 경우)
+    if (label && description) {
+        const cardEl = valueEl.closest('.kpi-card');
+        console.log(`   - cardEl 존재:`, !!cardEl);
+        if (cardEl) {
+            const labelEl = cardEl.querySelector('.kpi-label');
+            const descEl = cardEl.querySelector('.kpi-description');
+            console.log(`   - labelEl 존재:`, !!labelEl);
+            console.log(`   - descEl 존재:`, !!descEl);
+            if (labelEl) {
+                labelEl.textContent = label;
+                console.log(`   ✅ 레이블 업데이트: ${label}`);
+            }
+            if (descEl) {
+                descEl.textContent = description;
+                console.log(`   ✅ 설명 업데이트: ${description}`);
+            }
+        } else {
+            console.warn(`⚠️  KPI 카드 요소를 찾을 수 없음: .kpi-card`);
+        }
+    }
+    
+    // kpiData가 없거나 undefined인 경우에도 기본값으로 표시
+    if (!kpiData) {
+        console.warn(`⚠️  KPI 데이터 없음 - 기본값 사용`);
+        kpiData = { value: 0, status: 'error', unit: '%', message: '데이터 없음' };
+    }
+    
+    if (kpiData.value !== undefined) {
         const currentYear = appState.currentYear || CONFIG.DEFAULT_YEAR;
         const previousYear = currentYear - 1;
         
@@ -469,19 +563,27 @@ function updateKPICard(id, kpiData) {
                             ${arrow} ${Math.abs(changeRate).toFixed(2)}%
                         </span>
                     </div>
-                    <div style="font-size: 0.7rem; color: #666; margin-top: 0.3rem;">
-                        (${change >= 0 ? '+' : ''}${change.toFixed(2)}%p)
-                    </div>
                 </div>
             </div>
         `;
         
-        badgeEl.textContent = getStatusText(kpiData.status);
-        badgeEl.className = `kpi-badge ${kpiData.status}`;
+        badgeEl.textContent = getStatusText(kpiData.status || 'error');
+        badgeEl.className = `kpi-badge ${kpiData.status || 'error'}`;
+        console.log(`✅ KPI 카드 [${id}] 업데이트 완료`);
     } else {
-        valueEl.textContent = 'N/A';
+        // value가 undefined인 경우에도 기본값 표시
+        console.warn(`⚠️  KPI 카드 [${id}]: value가 undefined - 기본값 표시`);
+        valueEl.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div>
+                    <div style="font-size: 0.7rem; color: #666; font-weight: 600; margin-bottom: 0.25rem;">데이터 없음</div>
+                    <div style="font-size: 2rem; font-weight: bold; color: #999;">N/A</div>
+                </div>
+            </div>
+        `;
         badgeEl.textContent = '-';
-        badgeEl.className = 'kpi-badge';
+        badgeEl.className = 'kpi-badge error';
+        console.log(`✅ KPI 카드 [${id}] 기본값 표시 완료`);
     }
 }
 
@@ -521,13 +623,20 @@ function updateProfitabilityChart(kpis) {
         profitabilityChart.destroy();
     }
     
+    const isBank = appState.currentIndustry === '은행업';
+    
     profitabilityChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['ROA', 'ROE', '영업이익률', '순이익률'],
+            labels: isBank ? ['ROA', 'ROE', 'NIM', '영업이익률'] : ['ROA', 'ROE', '영업이익률', '순이익률'],
             datasets: [{
                 label: '수익성 지표 (%)',
-                data: [
+                data: isBank ? [
+                    kpis.roa?.value || 0,
+                    kpis.roe?.value || 0,
+                    kpis.nim?.value || 0,
+                    kpis.operating_margin?.value || 0
+                ] : [
                     kpis.roa?.value || 0,
                     kpis.roe?.value || 0,
                     kpis.operating_margin?.value || 0,
@@ -588,13 +697,18 @@ function updateFinancialStructureChart(kpis) {
         financialStructureChart.destroy();
     }
     
+    const isBank = appState.currentIndustry === '은행업';
+    
     financialStructureChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['부채비율', '유동비율'],
+            labels: isBank ? ['NIM (순이자마진)', '영업이익률'] : ['부채비율', '유동비율'],
             datasets: [{
-                label: '재무구조 (%)',
-                data: [
+                label: isBank ? '은행 특화 지표 (%)' : '재무구조 (%)',
+                data: isBank ? [
+                    kpis.nim?.value || 0,
+                    kpis.operating_margin?.value || 0
+                ] : [
                     kpis.debt_ratio?.value || 0,
                     kpis.current_ratio?.value || 0
                 ],
@@ -689,9 +803,6 @@ function updateTrends(trends) {
                     <div style="font-size: 0.85rem; color: #666;">
                         ${isPositive ? '▲ 증가' : changeAmount < 0 ? '▼ 감소' : '━ 변동없음'} 
                         <strong style="color: ${changeColor};">${formatNumber(Math.abs(changeAmount))}</strong>
-                    </div>
-                    <div style="margin-top: 0.5rem; font-size: 0.75rem; color: #999;">
-                        계산식: (${formatNumber(currentValue)} - ${formatNumber(previousValue)})
                     </div>
                 </div>
             </div>
@@ -1119,8 +1230,18 @@ async function loadWeaknessAnalysis() {
             if (companyData && companyData.data) {
                 appState.companyInfo = companyData.data;
                 appState.currentIndustry = companyData.data.industry || appState.currentIndustry;
+                console.log('🏢 기업 정보 로드 완료:', {
+                    name: appState.companyInfo.corp_name,
+                    industry: appState.currentIndustry
+                });
             }
         }
+        
+        console.log('🔍 취약점 분석 API 호출:', {
+            corpCode: appState.currentCorpCode,
+            year: appState.currentYear,
+            industry: appState.currentIndustry
+        });
         
         // KPI와 취약점 분석 데이터를 함께 로드
         const [kpiData, weaknessData] = await Promise.all([
@@ -1128,11 +1249,30 @@ async function loadWeaknessAnalysis() {
             fetchAPI(`/weakness/${appState.currentCorpCode}?year=${appState.currentYear}&industry=${appState.currentIndustry}`)
         ]);
         
+        console.log('✅ 취약점 분석 응답:', {
+            industry_requested: weaknessData.industry_requested,
+            industry_used: weaknessData.industry,
+            benchmark: weaknessData.analysis?.benchmark
+        });
+        
         appState.kpiData = kpiData;
         appState.weaknessData = weaknessData;
         
+        // 업종 정보 업데이트 (KPI 응답에서)
+        if (kpiData.industry) {
+            appState.currentIndustry = kpiData.industry;
+            console.log('✅ 취약점 분석 - 업종 정보 업데이트:', appState.currentIndustry);
+        }
+        
+        console.log('📊 취약점 분석 - KPI 데이터:', {
+            kpiKeys: Object.keys(kpiData.kpis || {}),
+            nim: kpiData.kpis?.nim,
+            industry: appState.currentIndustry
+        });
+        
         // 화면 업데이트
         updateWeaknessHeader();
+        updateWeaknessPageTitle(); // 업종에 따라 제목 변경
         displayKPIComparison(kpiData.kpis, weaknessData.analysis.benchmark); // 새로운 비교 테이블
         updateRiskOverview(weaknessData.analysis);
         displayWeaknesses(weaknessData.analysis.weaknesses);
@@ -1168,10 +1308,40 @@ function updateWeaknessHeader() {
 }
 
 /**
+ * 취약점 페이지 제목 업데이트 (업종에 따라)
+ */
+function updateWeaknessPageTitle() {
+    const isBank = appState.currentIndustry === '은행업';
+    
+    // KPI 비교 섹션 제목 업데이트
+    const kpiSection = document.querySelector('#kpi-comparison')?.parentElement;
+    if (kpiSection) {
+        const titleElement = kpiSection.querySelector('h3');
+        if (titleElement) {
+            if (isBank) {
+                titleElement.innerHTML = '📊 은행 특화 지표 업종 비교';
+            } else {
+                titleElement.innerHTML = '📊 재무지표 업종 비교';
+            }
+            console.log(`✅ KPI 비교 섹션 제목 업데이트: ${isBank ? '은행 특화 지표' : '재무지표'}`);
+        }
+    }
+}
+
+/**
  * KPI 비교 테이블 표시
  */
 function displayKPIComparison(kpis, benchmark) {
     console.log('📊 KPI 비교 테이블 생성:', { kpis, benchmark });
+    console.log('   - 사용된 업종:', appState.currentIndustry);
+    console.log('   - 벤치마크 값:', benchmark);
+    console.log('   - KPI 키 목록:', Object.keys(kpis || {}));
+    console.log('   - NIM 데이터:', kpis?.nim);
+    console.log('   - ROA 데이터:', kpis?.roa);
+    console.log('   - ROE 데이터:', kpis?.roe);
+    console.log('   - operating_margin 데이터:', kpis?.operating_margin);
+    console.log('   - debt_ratio 데이터:', kpis?.debt_ratio);
+    console.log('   - current_ratio 데이터:', kpis?.current_ratio);
     
     const container = document.getElementById('kpi-comparison');
     if (!container) {
@@ -1179,16 +1349,79 @@ function displayKPIComparison(kpis, benchmark) {
         return;
     }
     
-    // KPI 목록
-    const kpiList = [
-        { key: 'roa', name: 'ROA (총자산이익률)', unit: '%', good: 'higher' },
-        { key: 'roe', name: 'ROE (자기자본이익률)', unit: '%', good: 'higher' },
-        { key: 'debt_ratio', name: '부채비율', unit: '%', good: 'lower' },
-        { key: 'current_ratio', name: '유동비율', unit: '%', good: 'higher' },
-        { key: 'operating_margin', name: '영업이익률', unit: '%', good: 'higher' }
-    ];
+    // 업종 정보 확인 (여러 소스에서 확인)
+    let industry = appState.currentIndustry;
+    
+    // 벤치마크에서도 업종 정보 추론 (NIM이 있으면 은행업)
+    if (benchmark && benchmark.nim !== undefined) {
+        console.log('   ℹ️  벤치마크에 NIM이 있음 - 은행업으로 판단');
+        industry = '은행업';
+    }
+    
+    // KPI 데이터에서도 확인 (NIM이 있으면 은행업)
+    if (kpis && kpis.nim && kpis.nim.value !== undefined) {
+        console.log('   ℹ️  KPI 데이터에 NIM이 있음 - 은행업으로 판단');
+        industry = '은행업';
+    }
+    
+    // 업종 정보 업데이트
+    if (industry !== appState.currentIndustry) {
+        console.log(`   ⚠️  업종 정보 불일치 - ${appState.currentIndustry} → ${industry}로 업데이트`);
+        appState.currentIndustry = industry;
+    }
+    
+    // KPI 목록 (업종에 따라 다르게 표시)
+    const isBank = industry === '은행업';
+    console.log(`   🔍 최종 판단: isBank=${isBank}, industry="${industry}"`);
+    console.log(`   🔍 appState.currentIndustry="${appState.currentIndustry}"`);
+    let kpiList;
+    
+    if (isBank) {
+        // 은행 특화 지표 (ROA, ROE, NIM, 영업이익률)
+        kpiList = [
+            { key: 'roa', name: 'ROA (총자산이익률)', unit: '%', good: 'higher' },
+            { key: 'roe', name: 'ROE (자기자본이익률)', unit: '%', good: 'higher' },
+            { key: 'nim', name: 'NIM (순이자마진)', unit: '%', good: 'higher' },
+            { key: 'operating_margin', name: '영업이익률', unit: '%', good: 'higher' }
+        ];
+        console.log(`   ✅ 은행업 모드 - kpiList:`, kpiList.map(k => k.key));
+    } else {
+        // 일반 업종 지표
+        kpiList = [
+            { key: 'roa', name: 'ROA (총자산이익률)', unit: '%', good: 'higher' },
+            { key: 'roe', name: 'ROE (자기자본이익률)', unit: '%', good: 'higher' },
+            { key: 'debt_ratio', name: '부채비율', unit: '%', good: 'lower' },
+            { key: 'current_ratio', name: '유동비율', unit: '%', good: 'higher' },
+            { key: 'operating_margin', name: '영업이익률', unit: '%', good: 'higher' }
+        ];
+        console.log(`   ✅ 일반 업종 모드 - kpiList:`, kpiList.map(k => k.key));
+    }
+    
+    // 은행업인데 부채비율/유동비율이 포함되어 있으면 필터링
+    if (isBank) {
+        const hasDebtRatio = kpiList.some(k => k.key === 'debt_ratio');
+        const hasCurrentRatio = kpiList.some(k => k.key === 'current_ratio');
+        if (hasDebtRatio || hasCurrentRatio) {
+            console.error(`   ❌ 오류: 은행업인데 부채비율(${hasDebtRatio})/유동비율(${hasCurrentRatio})이 포함됨!`);
+            // 필터링
+            kpiList = kpiList.filter(k => k.key !== 'debt_ratio' && k.key !== 'current_ratio');
+            console.log(`   ✅ 필터링 후 KPI 목록:`, kpiList.map(k => k.key));
+        }
+    }
+    
+    const industryName = industry || appState.currentIndustry || 'N/A';
+    const indicatorType = isBank ? '은행 특화 지표' : '재무지표';
+    
+    console.log(`   📋 최종 사용 업종: "${industryName}", 지표 타입: "${indicatorType}"`);
+    console.log(`   📋 표시할 KPI 개수: ${kpiList.length}개`);
+    console.log(`   📋 KPI 키 목록:`, kpiList.map(k => k.key));
     
     let tableHtml = `
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f0f7ff; border-left: 4px solid #0047FF; border-radius: 4px;">
+            <strong style="color: #0047FF;">📊 비교 기준 업종:</strong> 
+            <span style="font-size: 1.1rem; font-weight: bold; color: #333;">${industryName}</span>
+            ${isBank ? '<br><small style="color: #666; margin-top: 0.25rem; display: block;">은행 특화 지표: ROA, ROE, NIM, 영업이익률</small>' : '<br><small style="color: #666; margin-top: 0.25rem; display: block;">일반 재무지표: ROA, ROE, 부채비율, 유동비율, 영업이익률</small>'}
+        </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
                 <thead>
@@ -1204,20 +1437,64 @@ function displayKPIComparison(kpis, benchmark) {
                 <tbody>
     `;
     
+    let processedCount = 0;
+    console.log(`📋 처리할 KPI 목록:`, kpiList.map(k => `${k.key} (${k.name})`));
+    
     kpiList.forEach((kpi, index) => {
-        const currentValue = kpis[kpi.key]?.value || 0;
+        console.log(`🔄 [${index + 1}/${kpiList.length}] KPI 처리 시작: ${kpi.key} (${kpi.name})`);
+        const kpiData = kpis[kpi.key];
         const benchmarkValue = benchmark?.[kpi.key] || 0;
-        const diff = currentValue - benchmarkValue;
-        const diffPercent = benchmarkValue !== 0 ? ((diff / benchmarkValue) * 100).toFixed(1) : 0;
+        
+        console.log(`   - kpiData 존재:`, !!kpiData);
+        if (kpiData) {
+            console.log(`   - kpiData.value:`, kpiData.value);
+            console.log(`   - kpiData.status:`, kpiData.status);
+        } else {
+            console.log(`   - kpiData: null/undefined`);
+        }
+        console.log(`   - benchmarkValue:`, benchmarkValue);
+        
+        // 지표 데이터가 없어도 표시 (은행업의 경우 NIM은 필수)
+        let actualKpiData = kpiData;
+        if (!kpiData) {
+            if (kpi.key === 'nim' && isBank) {
+                // 은행업 NIM은 데이터가 없어도 기본값으로 표시
+                console.log(`   ℹ️  NIM 데이터 없지만 은행업이므로 기본값으로 표시`);
+                actualKpiData = { value: 0, status: 'error', unit: '%', previous_value: 0 };
+            } else {
+                // 다른 지표는 데이터 없으면 건너뛰기
+                console.warn(`⚠️  KPI [${kpi.key}] 데이터 없음 - 건너뛰기`);
+                return;
+            }
+        }
+        
+        // 실제 사용할 데이터
+        const actualValue = actualKpiData.value ?? 0;
+        const actualBenchmark = benchmarkValue;
+        const diff = actualValue - actualBenchmark;
+        const diffPercent = actualBenchmark !== 0 ? ((diff / actualBenchmark) * 100).toFixed(1) : 0;
+        
+        console.log(`📋 KPI [${kpi.key}] 계산 완료:`, {
+            exists: !!kpiData,
+            value: actualValue,
+            status: actualKpiData?.status,
+            benchmark: actualBenchmark,
+            diff: diff,
+            diffPercent: diffPercent
+        });
         
         // 평가 (높을수록 좋은지, 낮을수록 좋은지에 따라)
         let evaluation, evalColor, evalIcon;
-        if (kpi.good === 'higher') {
+        if (actualKpiData.status === 'error') {
+            evaluation = '데이터 없음';
+            evalColor = '#999';
+            evalIcon = '?';
+        } else if (kpi.good === 'higher') {
             if (diff > 0) {
                 evaluation = '우수';
                 evalColor = '#00C851';
                 evalIcon = '✓';
-            } else if (diff > -benchmarkValue * 0.2) {
+            } else if (diff > -actualBenchmark * 0.2) {
                 evaluation = '양호';
                 evalColor = '#33B5E5';
                 evalIcon = '○';
@@ -1231,7 +1508,7 @@ function displayKPIComparison(kpis, benchmark) {
                 evaluation = '우수';
                 evalColor = '#00C851';
                 evalIcon = '✓';
-            } else if (diff < benchmarkValue * 0.2) {
+            } else if (diff < actualBenchmark * 0.2) {
                 evaluation = '양호';
                 evalColor = '#33B5E5';
                 evalIcon = '○';
@@ -1243,28 +1520,35 @@ function displayKPIComparison(kpis, benchmark) {
         }
         
         // 비교 바 차트
-        const maxValue = Math.max(currentValue, benchmarkValue) * 1.2;
-        const currentBarWidth = (currentValue / maxValue * 100).toFixed(1);
-        const benchmarkBarWidth = (benchmarkValue / maxValue * 100).toFixed(1);
+        const maxValue = Math.max(actualValue, actualBenchmark) * 1.2 || 1;
+        const currentBarWidth = maxValue > 0 ? (actualValue / maxValue * 100).toFixed(1) : 0;
+        const benchmarkBarWidth = maxValue > 0 ? (actualBenchmark / maxValue * 100).toFixed(1) : 0;
         
         const rowBg = index % 2 === 0 ? '#f8f9fa' : 'white';
         
-        tableHtml += `
+        console.log(`   ✅ KPI [${kpi.key}] 행 생성 시작: value=${actualValue}, benchmark=${actualBenchmark}`);
+        
+        const rowHtml = `
             <tr style="background: ${rowBg}; border-bottom: 1px solid #e0e0e0;">
                 <td style="padding: 1rem; font-weight: 600;">${kpi.name}</td>
                 <td style="padding: 1rem; text-align: center;">
-                    <span style="font-size: 1.3rem; font-weight: bold; color: #0047FF;">${currentValue.toFixed(2)}${kpi.unit}</span>
+                    <span style="font-size: 1.3rem; font-weight: bold; color: ${actualKpiData.status === 'error' ? '#999' : '#0047FF'};">
+                        ${actualKpiData.status === 'error' ? 'N/A' : actualValue.toFixed(2)}${kpi.unit}
+                    </span>
                 </td>
                 <td style="padding: 1rem; text-align: center;">
-                    <span style="font-size: 1.3rem; font-weight: bold; color: #666;">${benchmarkValue.toFixed(2)}${kpi.unit}</span>
+                    <span style="font-size: 1.3rem; font-weight: bold; color: #666;">${actualBenchmark.toFixed(2)}${kpi.unit}</span>
                 </td>
                 <td style="padding: 1rem; text-align: center;">
-                    <div style="font-size: 1.1rem; font-weight: bold; color: ${diff >= 0 ? '#0047FF' : '#FF4B4B'};">
-                        ${diff >= 0 ? '+' : ''}${diff.toFixed(2)}${kpi.unit}
-                    </div>
-                    <div style="font-size: 0.9rem; color: #666;">
-                        (${diffPercent >= 0 ? '+' : ''}${diffPercent}%)
-                    </div>
+                    ${actualKpiData.status === 'error' ? 
+                        '<div style="font-size: 0.9rem; color: #999;">데이터 없음</div>' :
+                        `<div style="font-size: 1.1rem; font-weight: bold; color: ${diff >= 0 ? '#0047FF' : '#FF4B4B'};">
+                            ${diff >= 0 ? '+' : ''}${diff.toFixed(2)}${kpi.unit}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666;">
+                            (${diffPercent >= 0 ? '+' : ''}${diffPercent}%)
+                        </div>`
+                    }
                 </td>
                 <td style="padding: 1rem; text-align: center;">
                     <div style="display: inline-block; padding: 0.5rem 1rem; background: ${evalColor}; color: white; border-radius: 20px; font-weight: bold;">
@@ -1291,6 +1575,13 @@ function displayKPIComparison(kpis, benchmark) {
                 </td>
             </tr>
         `;
+        
+        console.log(`   ✅ KPI [${kpi.key}] 행 HTML 생성 완료 (길이: ${rowHtml.length}자)`);
+        if (kpi.key === 'nim') {
+            console.log(`   🎯 NIM 행 HTML:`, rowHtml.substring(0, 200));
+        }
+        tableHtml += rowHtml;
+        processedCount++;
     });
     
     tableHtml += `
@@ -1299,8 +1590,42 @@ function displayKPIComparison(kpis, benchmark) {
         </div>
     `;
     
+    console.log(`✅ KPI 비교 테이블 HTML 생성 완료`);
+    console.log(`   - 전체 KPI 목록: ${kpiList.length}개`);
+    console.log(`   - 실제 처리된 KPI: ${processedCount}개`);
+    console.log(`   - 생성된 HTML 길이: ${tableHtml.length}자`);
+    console.log(`   - NIM 포함 여부: ${tableHtml.includes('NIM') ? 'YES' : 'NO'}`);
+    console.log(`   - NIM 포함 여부 (소문자): ${tableHtml.includes('nim') ? 'YES' : 'NO'}`);
+    console.log(`   - NIM 행 포함 여부: ${tableHtml.includes('NIM (순이자마진)') ? 'YES' : 'NO'}`);
+    
+    // HTML 미리보기 (처음 1000자)
+    if (tableHtml.includes('NIM')) {
+        const nimIndex = tableHtml.indexOf('NIM');
+        console.log(`   - NIM 주변 HTML:`, tableHtml.substring(Math.max(0, nimIndex - 100), nimIndex + 500));
+    }
+    
     container.innerHTML = tableHtml;
-    console.log('✅ KPI 비교 테이블 생성 완료');
+    
+    // DOM 업데이트 후 확인
+    setTimeout(() => {
+        const nimRows = container.querySelectorAll('tbody tr');
+        console.log(`   - 생성된 테이블 행 수: ${nimRows.length}개`);
+        
+        // NIM 행이 실제로 DOM에 있는지 확인
+        const nimRow = Array.from(nimRows).find(row => row.textContent.includes('NIM'));
+        console.log(`   - NIM 행 DOM 존재: ${nimRow ? 'YES' : 'NO'}`);
+        if (nimRow) {
+            console.log(`   - NIM 행 내용:`, nimRow.textContent.substring(0, 150));
+            console.log(`   - NIM 행 HTML:`, nimRow.outerHTML.substring(0, 300));
+        } else {
+            console.error(`   ❌ NIM 행이 DOM에 없습니다!`);
+            console.log(`   - 모든 행:`, Array.from(nimRows).map(r => r.textContent.substring(0, 50)));
+        }
+    }, 100);
+    
+    console.log('✅ KPI 비교 테이블 DOM 업데이트 완료');
+    console.log(`   - container 요소:`, container);
+    console.log(`   - container.innerHTML 길이:`, container.innerHTML.length);
 }
 
 /**
@@ -1337,7 +1662,49 @@ function displayWeaknesses(weaknesses) {
         return;
     }
     
-    container.innerHTML = weaknesses.map(weakness => {
+    // 은행업일 경우 부채비율/유동비율 관련 취약점 필터링
+    const isBank = appState.currentIndustry === '은행업';
+    let filteredWeaknesses = weaknesses;
+    
+    if (isBank) {
+        filteredWeaknesses = weaknesses.filter(w => {
+            const title = w.title || '';
+            const ruleId = w.rule_id || '';
+            
+            // 부채비율, 유동비율 관련 취약점 제외
+            // R01: 부채비율, R05: 유동비율 관련 규칙 제외
+            if (ruleId === 'R01' || ruleId === 'R05') {
+                return false;
+            }
+            
+            // 제목에 부채비율, 유동비율, 유동성 관련 키워드가 있으면 제외
+            if (title.includes('부채비율') || title.includes('유동비율') || title.includes('유동성 부족') || title.includes('유동성 주의')) {
+                return false;
+            }
+            
+            return true;
+        });
+        
+        console.log(`🏦 은행업 - 취약점 필터링: ${weaknesses.length}개 → ${filteredWeaknesses.length}개`);
+        if (weaknesses.length !== filteredWeaknesses.length) {
+            const filtered = weaknesses.filter(w => {
+                const title = w.title || '';
+                const ruleId = w.rule_id || '';
+                return ruleId === 'R01' || ruleId === 'R05' || 
+                       title.includes('부채비율') || title.includes('유동비율') || title.includes('유동성');
+            });
+            if (filtered.length > 0) {
+                console.log(`   - 제외된 취약점:`, filtered.map(w => `${w.rule_id}: ${w.title}`));
+            }
+        }
+    }
+    
+    if (filteredWeaknesses.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: var(--success-color); font-size: 1.2rem;">✅ 발견된 취약점이 없습니다. 재무 상태가 양호합니다!</p>';
+        return;
+    }
+    
+    container.innerHTML = filteredWeaknesses.map(weakness => {
         // 수치 정보가 있는 경우 표시
         let metricsHtml = '';
         if (weakness.current_value !== undefined && weakness.benchmark_value !== undefined) {
@@ -1462,12 +1829,28 @@ async function loadReport() {
             if (companyData && companyData.data) {
                 appState.companyInfo = companyData.data;
                 appState.currentIndustry = companyData.data.industry || appState.currentIndustry;
+                console.log('🏢 기업 정보 로드 완료:', {
+                    name: appState.companyInfo.corp_name,
+                    industry: appState.currentIndustry
+                });
             }
         }
+        
+        console.log('📊 종합 리포트 API 호출:', {
+            corpCode: appState.currentCorpCode,
+            year: appState.currentYear,
+            industry: appState.currentIndustry
+        });
         
         const data = await fetchAPI(
             `/report/${appState.currentCorpCode}?year=${appState.currentYear}&industry=${appState.currentIndustry}`
         );
+        
+        console.log('✅ 종합 리포트 응답:', {
+            company: data.report?.company?.corp_name,
+            industry: appState.currentIndustry,
+            benchmark: data.report?.weakness_analysis?.benchmark
+        });
         
         appState.reportData = data.report;
         
@@ -1557,6 +1940,22 @@ function displayReport(report) {
                             ${getStatusText(kpis.roe?.status)}
                         </span>
                     </div>
+                    ${(appState.currentIndustry === '은행업') ? `
+                    <div style="padding: 1rem; background: white; border-radius: var(--radius-sm);">
+                        <strong>NIM (순이자마진)</strong><br>
+                        <span style="font-size: 1.5rem; color: var(--primary-color);">${kpis.nim?.value?.toFixed(2) || 'N/A'}%</span>
+                        <span style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; background: ${getStatusColor(kpis.nim?.status)}; color: white; border-radius: 4px; font-size: 0.75rem;">
+                            ${getStatusText(kpis.nim?.status)}
+                        </span>
+                    </div>
+                    <div style="padding: 1rem; background: white; border-radius: var(--radius-sm);">
+                        <strong>영업이익률</strong><br>
+                        <span style="font-size: 1.5rem; color: var(--primary-color);">${kpis.operating_margin?.value?.toFixed(2) || 'N/A'}%</span>
+                        <span style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; background: ${getStatusColor(kpis.operating_margin?.status)}; color: white; border-radius: 4px; font-size: 0.75rem;">
+                            ${getStatusText(kpis.operating_margin?.status)}
+                        </span>
+                    </div>
+                    ` : `
                     <div style="padding: 1rem; background: white; border-radius: var(--radius-sm);">
                         <strong>부채비율</strong><br>
                         <span style="font-size: 1.5rem; color: var(--primary-color);">${kpis.debt_ratio?.value || 'N/A'}%</span>
@@ -1571,6 +1970,7 @@ function displayReport(report) {
                             ${getStatusText(kpis.current_ratio?.status)}
                         </span>
                     </div>
+                    `}
                 </div>
             </section>
             

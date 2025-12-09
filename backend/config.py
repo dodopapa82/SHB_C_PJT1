@@ -21,7 +21,7 @@ class Config:
     
     # 기본값 설정
     DEFAULT_YEAR = int(os.getenv('DEFAULT_YEAR', datetime.now().year - 1))  # 전년도
-    DEFAULT_INDUSTRY = os.getenv('DEFAULT_INDUSTRY', 'default')
+    DEFAULT_INDUSTRY = os.getenv('DEFAULT_INDUSTRY', '은행업')
     DEFAULT_REPORT_CODE = os.getenv('DEFAULT_REPORT_CODE', '11011')  # 사업보고서
     
     # 캐시 설정

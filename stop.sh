@@ -17,60 +17,76 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# 1. PID 파일에서 서버 종료
+# 백엔드 서버 종료
 if [ -f "server.pid" ]; then
     SERVER_PID=$(cat server.pid)
-    echo "📌 저장된 서버 PID: $SERVER_PID"
-    
     if ps -p $SERVER_PID > /dev/null 2>&1; then
-        echo "서버 프로세스 종료 중..."
+        echo "🛑 백엔드 서버 종료 중... (PID: $SERVER_PID)"
         kill $SERVER_PID 2>/dev/null
         sleep 1
         
-        # 강제 종료가 필요한 경우
+        # 강제 종료 (필요시)
         if ps -p $SERVER_PID > /dev/null 2>&1; then
-            echo "강제 종료 중..."
             kill -9 $SERVER_PID 2>/dev/null
         fi
         
-        echo -e "${GREEN}✅ 서버가 종료되었습니다.${NC}"
+        echo -e "${GREEN}✅ 백엔드 서버 종료 완료${NC}"
     else
-        echo -e "${YELLOW}⚠️  서버 프로세스가 이미 종료되었습니다.${NC}"
+        echo -e "${YELLOW}⚠️  백엔드 서버가 이미 종료되었습니다.${NC}"
     fi
-    
     rm server.pid
 else
     echo -e "${YELLOW}⚠️  server.pid 파일을 찾을 수 없습니다.${NC}"
-fi
-
-# 2. 포트 5001을 사용하는 모든 프로세스 종료
-echo ""
-echo "📌 포트 5001 정리 중..."
-if lsof -Pi :5001 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo "포트 5001을 사용하는 프로세스 종료 중..."
-    lsof -ti:5001 | xargs kill -9 2>/dev/null
-    sleep 1
-    echo -e "${GREEN}✅ 포트 정리 완료${NC}"
-else
-    echo -e "${GREEN}✅ 포트 5001은 이미 비어있습니다.${NC}"
-fi
-
-# 3. 로그 파일 정리 (선택사항)
-echo ""
-read -p "서버 로그 파일(server.log)을 삭제하시겠습니까? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    if [ -f "server.log" ]; then
-        rm server.log
-        echo -e "${GREEN}✅ 로그 파일 삭제 완료${NC}"
+    
+    # 포트로 찾아서 종료
+    if lsof -Pi :5001 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "포트 5001을 사용하는 프로세스를 종료합니다..."
+        lsof -ti:5001 | xargs kill -9 2>/dev/null
+        echo -e "${GREEN}✅ 포트 5001 정리 완료${NC}"
     fi
-else
-    echo "로그 파일을 유지합니다."
 fi
-
-echo ""
-echo "=================================="
-echo -e "${GREEN}✨ 시스템 종료 완료!${NC}"
-echo "=================================="
 echo ""
 
+# 프론트엔드 서버 종료
+if [ -f "frontend.pid" ]; then
+    FRONTEND_PID=$(cat frontend.pid)
+    if ps -p $FRONTEND_PID > /dev/null 2>&1; then
+        echo "🛑 프론트엔드 서버 종료 중... (PID: $FRONTEND_PID)"
+        kill $FRONTEND_PID 2>/dev/null
+        sleep 1
+        
+        # 강제 종료 (필요시)
+        if ps -p $FRONTEND_PID > /dev/null 2>&1; then
+            kill -9 $FRONTEND_PID 2>/dev/null
+        fi
+        
+        echo -e "${GREEN}✅ 프론트엔드 서버 종료 완료${NC}"
+    else
+        echo -e "${YELLOW}⚠️  프론트엔드 서버가 이미 종료되었습니다.${NC}"
+    fi
+    rm frontend.pid
+else
+    echo -e "${YELLOW}⚠️  frontend.pid 파일을 찾을 수 없습니다.${NC}"
+    
+    # 포트로 찾아서 종료
+    if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "포트 8080을 사용하는 프로세스를 종료합니다..."
+        lsof -ti:8080 | xargs kill -9 2>/dev/null
+        echo -e "${GREEN}✅ 포트 8080 정리 완료${NC}"
+    fi
+fi
+echo ""
+
+# 로그 파일 정리 (선택사항)
+if [ -f "server.log" ]; then
+    echo "📝 서버 로그 파일 유지: server.log"
+fi
+if [ -f "frontend.log" ]; then
+    echo "📝 프론트엔드 로그 파일 유지: frontend.log"
+fi
+echo ""
+
+echo "=================================="
+echo -e "${GREEN}✅ 모든 서버가 종료되었습니다!${NC}"
+echo "=================================="
+echo ""
