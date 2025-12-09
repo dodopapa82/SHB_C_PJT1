@@ -355,19 +355,19 @@ async function loadDashboard() {
             industry: kpiData.industry,
             currentIndustry: appState.currentIndustry,
             kpiKeys: Object.keys(kpiData.kpis || {}),
-            nim: kpiData.kpis?.nim,
+            bis_capital_ratio: kpiData.kpis?.bis_capital_ratio,
             debt_ratio: kpiData.kpis?.debt_ratio,
             current_ratio: kpiData.kpis?.current_ratio
         });
         
-        // NIM 데이터 상세 확인 (은행업일 경우)
+        // BIS 자기자본비율 데이터 상세 확인 (은행업일 경우)
         if (appState.currentIndustry === '은행업') {
-            console.log('🏦 은행업 NIM 데이터 상세:', {
-                exists: !!kpiData.kpis?.nim,
-                value: kpiData.kpis?.nim?.value,
-                status: kpiData.kpis?.nim?.status,
-                unit: kpiData.kpis?.nim?.unit,
-                description: kpiData.kpis?.nim?.description
+            console.log('🏦 은행업 BIS 자기자본비율 데이터 상세:', {
+                exists: !!kpiData.kpis?.bis_capital_ratio,
+                value: kpiData.kpis?.bis_capital_ratio?.value,
+                status: kpiData.kpis?.bis_capital_ratio?.status,
+                unit: kpiData.kpis?.bis_capital_ratio?.unit,
+                description: kpiData.kpis?.bis_capital_ratio?.description
             });
         }
         
@@ -429,7 +429,7 @@ function updateKPICards(kpis) {
     console.log('📊 KPI 카드 업데이트:', kpis);
     console.log('   - 업종:', appState.currentIndustry);
     console.log('   - KPI 키 목록:', Object.keys(kpis || {}));
-    console.log('   - NIM 존재:', 'nim' in (kpis || {}));
+    console.log('   - BIS 자기자본비율 존재:', 'bis_capital_ratio' in (kpis || {}));
     console.log('   - debt_ratio 존재:', 'debt_ratio' in (kpis || {}));
     console.log('   - current_ratio 존재:', 'current_ratio' in (kpis || {}));
     
@@ -443,14 +443,14 @@ function updateKPICards(kpis) {
     updateKPICard('roe', kpis.roe);
     
     if (isBank) {
-        // 은행업: NIM과 영업이익률
-        console.log('   🏦 은행업 모드 - NIM과 영업이익률 표시');
-        console.log('      - NIM 데이터:', kpis.nim);
+        // 은행업: BIS 자기자본비율과 영업이익률
+        console.log('   🏦 은행업 모드 - BIS 자기자본비율과 영업이익률 표시');
+        console.log('      - BIS 자기자본비율 데이터:', kpis.bis_capital_ratio);
         console.log('      - 영업이익률 데이터:', kpis.operating_margin);
         
-        // NIM이 없거나 에러인 경우 기본값 사용
-        const nimData = kpis.nim || { value: 0, status: 'error', unit: '%', message: '데이터 없음' };
-        updateKPICardWithLabel('debt', nimData, 'NIM', '순이자마진');
+        // BIS 자기자본비율이 없거나 에러인 경우 기본값 사용
+        const bisData = kpis.bis_capital_ratio || { value: 0, status: 'error', unit: '%', message: '데이터 없음' };
+        updateKPICardWithLabel('debt', bisData, 'BIS 자기자본비율', '자기자본 / 총자산');
         updateKPICardWithLabel('current', kpis.operating_margin, '영업이익률', '영업이익 / 매출액');
     } else {
         // 일반 업종: 부채비율과 유동비율
@@ -628,13 +628,13 @@ function updateProfitabilityChart(kpis) {
     profitabilityChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: isBank ? ['ROA', 'ROE', 'NIM', '영업이익률'] : ['ROA', 'ROE', '영업이익률', '순이익률'],
+            labels: isBank ? ['ROA', 'ROE', 'BIS 자기자본비율', '영업이익률'] : ['ROA', 'ROE', '영업이익률', '순이익률'],
             datasets: [{
                 label: '수익성 지표 (%)',
                 data: isBank ? [
                     kpis.roa?.value || 0,
                     kpis.roe?.value || 0,
-                    kpis.nim?.value || 0,
+                    kpis.bis_capital_ratio?.value || 0,
                     kpis.operating_margin?.value || 0
                 ] : [
                     kpis.roa?.value || 0,
@@ -702,11 +702,11 @@ function updateFinancialStructureChart(kpis) {
     financialStructureChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: isBank ? ['NIM (순이자마진)', '영업이익률'] : ['부채비율', '유동비율'],
+            labels: isBank ? ['BIS 자기자본비율', '영업이익률'] : ['부채비율', '유동비율'],
             datasets: [{
                 label: isBank ? '은행 특화 지표 (%)' : '재무구조 (%)',
                 data: isBank ? [
-                    kpis.nim?.value || 0,
+                    kpis.bis_capital_ratio?.value || 0,
                     kpis.operating_margin?.value || 0
                 ] : [
                     kpis.debt_ratio?.value || 0,
@@ -849,11 +849,28 @@ async function loadFinancialStatement() {
         const response = await fetchAPI(`/financial/${appState.currentCorpCode}?year=${appState.currentYear}`);
         
         console.log('✅ 재무제표 API 응답:', response);
+        console.log('   - 응답 구조:', {
+            hasData: !!response?.data,
+            hasList: !!response?.data?.list,
+            listLength: response?.data?.list?.length || 0,
+            directList: response?.list?.length || 0
+        });
         
-        // 응답 구조 확인
+        // 응답 구조 확인 및 데이터 저장
         if (response && response.data) {
             appState.financialData = response.data;
-            console.log('✅ 재무제표 데이터 저장:', appState.financialData);
+            console.log('✅ 재무제표 데이터 저장 (response.data):', {
+                listLength: appState.financialData?.list?.length || 0,
+                hasBalanceSheet: !!appState.financialData?.balance_sheet,
+                hasIncomeStatement: !!appState.financialData?.income_statement,
+                hasCashflowStatement: !!appState.financialData?.cashflow_statement
+            });
+        } else if (response && response.list) {
+            // 직접 list가 있는 경우
+            appState.financialData = response;
+            console.log('✅ 재무제표 데이터 저장 (직접 response):', {
+                listLength: appState.financialData?.list?.length || 0
+            });
         } else {
             appState.financialData = response;
             console.log('⚠️  응답 구조 다름, 직접 저장:', appState.financialData);
@@ -920,12 +937,39 @@ function displayFinancialStatement(data, type) {
         return;
     }
     
-    // 데이터 리스트 확인
-    const accountList = data.list || [];
+    // 데이터 리스트 확인 (여러 가능한 구조 지원)
+    let accountList = [];
+    if (data && data.list) {
+        accountList = data.list;
+    } else if (data && Array.isArray(data)) {
+        accountList = data;
+    } else if (data && data.income_statement) {
+        accountList = data.income_statement;
+    } else if (data && data.balance_sheet) {
+        accountList = data.balance_sheet;
+    }
+    
     console.log(`📋 계정과목 수: ${accountList.length}개`);
+    console.log(`   - 데이터 구조:`, {
+        hasList: !!data?.list,
+        hasIncomeStatement: !!data?.income_statement,
+        hasBalanceSheet: !!data?.balance_sheet,
+        isArray: Array.isArray(data),
+        accountListLength: accountList.length
+    });
     
     if (accountList.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #666; padding: 2rem;">재무제표 항목이 없습니다.</p>';
+        console.warn('⚠️  계정과목이 없습니다. 데이터 구조:', Object.keys(data || {}));
+        container.innerHTML = `
+            <p style="text-align: center; color: #666; padding: 2rem;">
+                재무제표 항목이 없습니다.<br>
+                <small style="color: #999; margin-top: 0.5rem; display: block;">
+                    데이터 키: ${Object.keys(data || {}).join(', ')}<br>
+                    ${data?.status ? `상태: ${data.status}` : ''}
+                    ${data?.message ? `메시지: ${data.message}` : ''}
+                </small>
+            </p>
+        `;
         return;
     }
     
@@ -937,27 +981,86 @@ function displayFinancialStatement(data, type) {
     // 재무제표 유형별 계정과목 필터링
     if (type === 'balance') {
         // 재무상태표 (BS)
-        const balanceAccounts = [
-            '자산총계', '유동자산', '비유동자산',
-            '부채총계', '유동부채', '비유동부채',
-            '자본총계'
-        ];
-        accounts = accountList.filter(item => 
-            balanceAccounts.includes(item.account_nm) || item.sj_div === 'BS'
-        );
-        // 주요 계정만 필터링 (너무 많으면)
-        if (accounts.length > 20) {
-            accounts = accountList.filter(item => balanceAccounts.includes(item.account_nm));
-        }
-        console.log(`💼 재무상태표 계정: ${accounts.length}개`);
-    } else if (type === 'income') {
-        // 포괄손익계산서 (IS + CIS 통합)
-        // IS와 CIS 모두 포함
-        accounts = accountList.filter(item => 
-            item.sj_div === 'IS' || item.sj_div === 'CIS'
-        );
+        console.log('💼 재무상태표 필터링 시작');
+        console.log(`   - 전체 계정 수: ${accountList.length}개`);
         
-        console.log(`💰 손익/포괄손익 원본 계정: ${accounts.length}개`);
+        // 먼저 sj_div로 필터링
+        let bsAccounts = accountList.filter(item => item.sj_div === 'BS');
+        console.log(`   - BS 계정: ${bsAccounts.length}개`);
+        
+        // BS 계정이 있으면 사용
+        if (bsAccounts.length > 0) {
+            const balanceKeywords = [
+                '자산총계', '유동자산', '비유동자산',
+                '부채총계', '유동부채', '비유동부채',
+                '자본총계', '자본금', '이익잉여금'
+            ];
+            
+            // 키워드 매칭 계정 우선 선택
+            const keywordAccounts = bsAccounts.filter(item => 
+                balanceKeywords.some(keyword => item.account_nm.includes(keyword))
+            );
+            
+            if (keywordAccounts.length > 0) {
+                accounts = keywordAccounts;
+            } else {
+                // 키워드 매칭이 없으면 모든 BS 계정 사용 (최대 30개)
+                accounts = bsAccounts.slice(0, 30);
+            }
+        } else {
+            // BS 계정이 없으면 키워드로 검색
+            const balanceKeywords = [
+                '자산', '부채', '자본', '유동', '비유동'
+            ];
+            accounts = accountList.filter(item => 
+                balanceKeywords.some(keyword => item.account_nm.includes(keyword))
+            ).slice(0, 30);
+        }
+        
+        console.log(`💼 재무상태표 계정 (필터링 후): ${accounts.length}개`);
+        accounts.slice(0, 5).forEach(a => console.log(`    - ${a.account_nm} (${a.sj_div || 'N/A'})`));
+    } else if (type === 'income') {
+        // 포괄손익계산서 (CIS 우선, 없으면 손익계산서 IS 사용)
+        console.log('💰 포괄손익계산서 필터링 시작');
+        console.log(`   - 전체 계정 수: ${accountList.length}개`);
+        console.log(`   - 계정 샘플:`, accountList.slice(0, 5).map(a => ({ name: a.account_nm, sj_div: a.sj_div })));
+        
+        // 먼저 CIS 데이터 확인
+        let cisAccounts = accountList.filter(item => item.sj_div === 'CIS');
+        let isAccounts = accountList.filter(item => item.sj_div === 'IS');
+        
+        console.log(`💰 손익/포괄손익 원본 계정: CIS=${cisAccounts.length}개, IS=${isAccounts.length}개`);
+        
+        // CIS가 있으면 CIS 우선, 없으면 IS 사용
+        // ⚠️ 주의: 바깥 스코프의 accounts 변수를 사용 (let 사용 X)
+        if (cisAccounts.length > 0) {
+            console.log('   ✅ CIS 데이터 있음 - 포괄손익계산서 사용');
+            accounts = cisAccounts;
+        } else if (isAccounts.length > 0) {
+            console.log('   ⚠️  CIS 데이터 없음 - 손익계산서(IS) 사용');
+            accounts = isAccounts;
+        } else {
+            // 둘 다 없으면 IS 또는 CIS 모두 포함하거나, sj_div가 없는 경우도 포함
+            // 더 관대한 필터링: 손익 관련 키워드로 검색
+            const incomeKeywords = [
+                '매출', '수익', '이익', '손익', '손실',
+                '원가', '비용', '영업', '법인세', '순이익',
+                '포괄', '기타포괄'
+            ];
+            accounts = accountList.filter(item => {
+                const accountName = item.account_nm || '';
+                const sjDiv = item.sj_div || '';
+                return sjDiv === 'IS' || sjDiv === 'CIS' || 
+                       incomeKeywords.some(keyword => accountName.includes(keyword));
+            });
+            console.log(`   ⚠️  CIS/IS 구분 불가 - 손익 관련 계정 사용: ${accounts.length}개`);
+            
+            // 여전히 없으면 모든 계정 사용 (최대 50개)
+            if (accounts.length === 0) {
+                console.log('   ⚠️  손익 관련 계정도 없음 - 모든 계정 사용');
+                accounts = accountList.slice(0, 50);
+            }
+        }
         
         // 중복 제거 및 주요 계정만 선택
         const uniqueAccounts = [];
@@ -965,16 +1068,16 @@ function displayFinancialStatement(data, type) {
         
         // 우선순위 계정 (표시 순서대로)
         const priorityKeywords = [
-            '매출액', '매출', '수익(매출액)',
-            '매출원가',
-            '매출총이익',
-            '판매비',
+            '매출액', '매출', '수익(매출액)', '영업수익',
+            '매출원가', '영업원가',
+            '매출총이익', '영업총이익',
+            '판매비', '관리비', '판매비와관리비',
             '영업이익',
-            '법인세비용차감전',
+            '법인세비용차감전', '법인세비용차감전순이익',
             '법인세비용',
-            '당기순이익',
+            '당기순이익', '당기순이익(손실)',
             '기타포괄손익',
-            '총포괄이익'
+            '총포괄이익', '총포괄손익'
         ];
         
         // 우선순위 순서대로 검색
@@ -985,24 +1088,62 @@ function displayFinancialStatement(data, type) {
             if (found) {
                 uniqueAccounts.push(found);
                 seenNames.add(found.account_nm);
+                console.log(`   ✅ 우선순위 계정 발견: ${found.account_nm} (${found.sj_div})`);
             }
         });
         
-        accounts = uniqueAccounts.slice(0, 20); // 최대 20개
+        // 우선순위 계정이 없으면 원본 accounts 사용 (최대 50개)
+        if (uniqueAccounts.length === 0) {
+            console.log('   ⚠️  우선순위 계정 없음 - 모든 계정 사용');
+            // 원본 accounts가 비어있으면 전체 accountList에서 다시 시도
+            if (accounts.length === 0) {
+                console.log('   ⚠️  accounts도 비어있음 - 전체 accountList 사용');
+                accounts = accountList.slice(0, 50);
+            } else {
+                accounts = accounts.slice(0, 50);
+            }
+        } else {
+            accounts = uniqueAccounts;
+        }
+        
         console.log(`💰 포괄손익계산서 계정 (필터링 후): ${accounts.length}개`);
-        accounts.forEach(a => console.log(`    - ${a.account_nm}`));
+        accounts.forEach(a => console.log(`    - ${a.account_nm} (${a.sj_div || 'N/A'})`));
     } else if (type === 'cashflow') {
         // 현금흐름표 (CF)
-        const cashflowAccounts = [
-            '영업활동현금흐름', '영업활동으로인한현금흐름',
-            '투자활동현금흐름', '투자활동으로인한현금흐름',
-            '재무활동현금흐름', '재무활동으로인한현금흐름',
-            '현금및현금성자산의순증가'
-        ];
-        accounts = accountList.filter(item => 
-            cashflowAccounts.some(name => item.account_nm.includes(name) || name.includes(item.account_nm)) ||
-            item.sj_div === 'CF'
-        );
+        console.log('💵 현금흐름표 필터링 시작');
+        console.log(`   - 전체 계정 수: ${accountList.length}개`);
+        
+        // 먼저 sj_div로 필터링
+        let cfAccounts = accountList.filter(item => item.sj_div === 'CF');
+        console.log(`   - CF 계정: ${cfAccounts.length}개`);
+        
+        if (cfAccounts.length > 0) {
+            const cashflowKeywords = [
+                '영업활동', '투자활동', '재무활동',
+                '현금흐름', '현금의', '현금및현금성자산'
+            ];
+            
+            // 키워드 매칭 계정 우선 선택
+            const keywordAccounts = cfAccounts.filter(item => 
+                cashflowKeywords.some(keyword => item.account_nm.includes(keyword))
+            );
+            
+            if (keywordAccounts.length > 0) {
+                accounts = keywordAccounts;
+            } else {
+                // 키워드 매칭이 없으면 모든 CF 계정 사용 (최대 20개)
+                accounts = cfAccounts.slice(0, 20);
+            }
+        } else {
+            // CF 계정이 없으면 키워드로 검색
+            const cashflowKeywords = [
+                '영업활동', '투자활동', '재무활동', '현금'
+            ];
+            accounts = accountList.filter(item => 
+                cashflowKeywords.some(keyword => item.account_nm.includes(keyword))
+            ).slice(0, 20);
+        }
+        
         // 중복 제거
         const uniqueAccounts = [];
         const seenNames = new Set();
@@ -1012,17 +1153,37 @@ function displayFinancialStatement(data, type) {
                 seenNames.add(item.account_nm);
             }
         });
-        accounts = uniqueAccounts.slice(0, 10);
-        console.log(`💵 현금흐름표 계정: ${accounts.length}개`);
+        accounts = uniqueAccounts;
+        
+        console.log(`💵 현금흐름표 계정 (필터링 후): ${accounts.length}개`);
+        accounts.slice(0, 5).forEach(a => console.log(`    - ${a.account_nm} (${a.sj_div || 'N/A'})`));
     }
     
     if (accounts.length === 0) {
         console.warn('⚠️  필터링 후 계정과목 없음');
+        console.log('   - 전체 계정 목록:', accountList.slice(0, 20).map(a => ({
+            name: a.account_nm,
+            sj_div: a.sj_div
+        })));
+        console.log('   - 요청한 타입:', type);
+        
+        // 디버깅 정보 표시
+        const availableAccounts = accountList.slice(0, 30).map(a => `${a.account_nm} (${a.sj_div || 'N/A'})`).join(', ');
         container.innerHTML = `
-            <p style="text-align: center; color: #666; padding: 2rem;">
-                해당 재무제표 데이터를 찾을 수 없습니다.<br>
-                <small>사용 가능한 계정: ${accountList.map(a => a.account_nm).join(', ')}</small>
-            </p>
+            <div style="padding: 2rem; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
+                <h3 style="color: #856404; margin-bottom: 1rem;">⚠️ 해당 재무제표 데이터를 찾을 수 없습니다.</h3>
+                <p style="color: #666; margin-bottom: 1rem;">
+                    요청한 타입: <strong>${type === 'balance' ? '재무상태표' : type === 'income' ? '포괄손익계산서' : '현금흐름표'}</strong>
+                </p>
+                <details style="margin-top: 1rem;">
+                    <summary style="cursor: pointer; color: #0047FF; font-weight: 600;">사용 가능한 계정 목록 보기</summary>
+                    <div style="margin-top: 0.5rem; padding: 1rem; background: white; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                        <small style="color: #666; line-height: 1.8;">
+                            ${availableAccounts || '계정 데이터가 없습니다.'}
+                        </small>
+                    </div>
+                </details>
+            </div>
         `;
         return;
     }
@@ -1109,36 +1270,97 @@ function generateBalanceSheet(accounts, currentYear, previousYear) {
 }
 
 /**
- * 포괄손익계산서 생성 (IS + CIS 통합)
+ * 포괄손익계산서 생성 (CIS 우선, 없으면 IS 사용)
  */
 function generateIncomeStatement(accounts, currentYear, previousYear) {
     console.log('💰 포괄손익계산서 생성 시작, 계정 수:', accounts.length);
     
+    if (accounts.length === 0) {
+        console.warn('   ⚠️  계정이 없습니다.');
+        return '<tr><td colspan="4" style="padding: 2rem; text-align: center; color: #666;">손익 관련 계정 데이터가 없습니다.</td></tr>';
+    }
+    
     let html = '';
     
-    // IS (손익계산서) 섹션
-    const isAccounts = accounts.filter(a => a.sj_div === 'IS');
-    if (isAccounts.length > 0) {
-        html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 손익계산서 】</td></tr>';
-        isAccounts.forEach(account => {
-            const isTotal = account.account_nm.includes('영업이익') || 
-                           account.account_nm.includes('법인세비용차감전');
-            html += generateFinancialRow(account, isTotal);
-        });
-    }
-    
-    // CIS (포괄손익계산서) 섹션
+    // CIS (포괄손익계산서) 섹션 우선 확인
     const cisAccounts = accounts.filter(a => a.sj_div === 'CIS');
+    const isAccounts = accounts.filter(a => a.sj_div === 'IS');
+    const otherAccounts = accounts.filter(a => a.sj_div !== 'CIS' && a.sj_div !== 'IS');
+    
+    console.log(`   - CIS 계정: ${cisAccounts.length}개, IS 계정: ${isAccounts.length}개, 기타: ${otherAccounts.length}개`);
+    
+    // CIS가 있으면 CIS 우선 표시
     if (cisAccounts.length > 0) {
-        html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 포괄손익 】</td></tr>';
+        html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem; background: #f0f7ff;">【 포괄손익계산서 】</td></tr>';
+        
+        // CIS 계정을 순서대로 표시
         cisAccounts.forEach(account => {
+            if (!account) {
+                console.warn('   ⚠️  null 계정 발견');
+                return;
+            }
             const isTotal = account.account_nm.includes('당기순이익') || 
-                           account.account_nm.includes('총포괄이익');
-            html += generateFinancialRow(account, isTotal);
+                           account.account_nm.includes('총포괄이익') ||
+                           account.account_nm.includes('기타포괄손익') ||
+                           account.account_nm.includes('총포괄손익');
+            const rowHtml = generateFinancialRow(account, isTotal);
+            if (rowHtml) {
+                html += rowHtml;
+            }
         });
+        console.log(`   ✅ CIS 데이터 표시 완료: ${cisAccounts.length}개 행`);
+        
+        // CIS에 주요 계정이 없으면 IS에서 보완
+        const hasNetIncome = cisAccounts.some(a => a.account_nm && a.account_nm.includes('당기순이익'));
+        if (!hasNetIncome && isAccounts.length > 0) {
+            console.log('   ℹ️  CIS에 당기순이익 없음 - IS에서 보완');
+            const netIncomeFromIS = isAccounts.find(a => a.account_nm && a.account_nm.includes('당기순이익'));
+            if (netIncomeFromIS) {
+                html += generateFinancialRow(netIncomeFromIS, true);
+            }
+        }
+    } 
+    // CIS가 없고 IS가 있으면 IS 표시
+    else if (isAccounts.length > 0) {
+        html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem; background: #f0f7ff;">【 손익계산서 】</td></tr>';
+        isAccounts.forEach(account => {
+            if (!account) {
+                console.warn('   ⚠️  null 계정 발견');
+                return;
+            }
+            const isTotal = account.account_nm.includes('영업이익') || 
+                           account.account_nm.includes('법인세비용차감전') ||
+                           account.account_nm.includes('당기순이익');
+            const rowHtml = generateFinancialRow(account, isTotal);
+            if (rowHtml) {
+                html += rowHtml;
+            }
+        });
+        console.log(`   ✅ IS 데이터 표시 완료 (CIS 없음): ${isAccounts.length}개 행`);
+    }
+    // 둘 다 없으면 모든 계정 표시 (sj_div가 없는 경우도 포함)
+    else if (accounts.length > 0) {
+        html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem; background: #f0f7ff;">【 손익 관련 계정 】</td></tr>';
+        accounts.forEach(account => {
+            if (!account) {
+                console.warn('   ⚠️  null 계정 발견');
+                return;
+            }
+            const isTotal = account.account_nm.includes('영업이익') || 
+                           account.account_nm.includes('당기순이익') ||
+                           account.account_nm.includes('총포괄이익');
+            const rowHtml = generateFinancialRow(account, isTotal);
+            if (rowHtml) {
+                html += rowHtml;
+            }
+        });
+        console.log(`   ✅ 모든 손익 계정 표시 완료: ${accounts.length}개 행`);
+    } else {
+        console.warn('   ⚠️  표시할 계정이 없습니다.');
+        html += '<tr><td colspan="4" style="padding: 2rem; text-align: center; color: #666;">손익 관련 계정 데이터가 없습니다.</td></tr>';
     }
     
-    console.log('✅ 포괄손익계산서 HTML 생성 완료');
+    console.log(`✅ 포괄손익계산서 HTML 생성 완료 (길이: ${html.length}자)`);
     return html;
 }
 
@@ -1266,7 +1488,7 @@ async function loadWeaknessAnalysis() {
         
         console.log('📊 취약점 분석 - KPI 데이터:', {
             kpiKeys: Object.keys(kpiData.kpis || {}),
-            nim: kpiData.kpis?.nim,
+            bis_capital_ratio: kpiData.kpis?.bis_capital_ratio,
             industry: appState.currentIndustry
         });
         
@@ -1336,7 +1558,7 @@ function displayKPIComparison(kpis, benchmark) {
     console.log('   - 사용된 업종:', appState.currentIndustry);
     console.log('   - 벤치마크 값:', benchmark);
     console.log('   - KPI 키 목록:', Object.keys(kpis || {}));
-    console.log('   - NIM 데이터:', kpis?.nim);
+    console.log('   - BIS 자기자본비율 데이터:', kpis?.bis_capital_ratio);
     console.log('   - ROA 데이터:', kpis?.roa);
     console.log('   - ROE 데이터:', kpis?.roe);
     console.log('   - operating_margin 데이터:', kpis?.operating_margin);
@@ -1352,15 +1574,15 @@ function displayKPIComparison(kpis, benchmark) {
     // 업종 정보 확인 (여러 소스에서 확인)
     let industry = appState.currentIndustry;
     
-    // 벤치마크에서도 업종 정보 추론 (NIM이 있으면 은행업)
-    if (benchmark && benchmark.nim !== undefined) {
-        console.log('   ℹ️  벤치마크에 NIM이 있음 - 은행업으로 판단');
+    // 벤치마크에서도 업종 정보 추론 (BIS 자기자본비율이 있으면 은행업)
+    if (benchmark && benchmark.bis_capital_ratio !== undefined) {
+        console.log('   ℹ️  벤치마크에 BIS 자기자본비율이 있음 - 은행업으로 판단');
         industry = '은행업';
     }
     
-    // KPI 데이터에서도 확인 (NIM이 있으면 은행업)
-    if (kpis && kpis.nim && kpis.nim.value !== undefined) {
-        console.log('   ℹ️  KPI 데이터에 NIM이 있음 - 은행업으로 판단');
+    // KPI 데이터에서도 확인 (BIS 자기자본비율이 있으면 은행업)
+    if (kpis && kpis.bis_capital_ratio && kpis.bis_capital_ratio.value !== undefined) {
+        console.log('   ℹ️  KPI 데이터에 BIS 자기자본비율이 있음 - 은행업으로 판단');
         industry = '은행업';
     }
     
@@ -1377,11 +1599,11 @@ function displayKPIComparison(kpis, benchmark) {
     let kpiList;
     
     if (isBank) {
-        // 은행 특화 지표 (ROA, ROE, NIM, 영업이익률)
+        // 은행 특화 지표 (ROA, ROE, BIS 자기자본비율, 영업이익률)
         kpiList = [
             { key: 'roa', name: 'ROA (총자산이익률)', unit: '%', good: 'higher' },
             { key: 'roe', name: 'ROE (자기자본이익률)', unit: '%', good: 'higher' },
-            { key: 'nim', name: 'NIM (순이자마진)', unit: '%', good: 'higher' },
+            { key: 'bis_capital_ratio', name: 'BIS 자기자본비율', unit: '%', good: 'higher' },
             { key: 'operating_margin', name: '영업이익률', unit: '%', good: 'higher' }
         ];
         console.log(`   ✅ 은행업 모드 - kpiList:`, kpiList.map(k => k.key));
@@ -1420,7 +1642,7 @@ function displayKPIComparison(kpis, benchmark) {
         <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f0f7ff; border-left: 4px solid #0047FF; border-radius: 4px;">
             <strong style="color: #0047FF;">📊 비교 기준 업종:</strong> 
             <span style="font-size: 1.1rem; font-weight: bold; color: #333;">${industryName}</span>
-            ${isBank ? '<br><small style="color: #666; margin-top: 0.25rem; display: block;">은행 특화 지표: ROA, ROE, NIM, 영업이익률</small>' : '<br><small style="color: #666; margin-top: 0.25rem; display: block;">일반 재무지표: ROA, ROE, 부채비율, 유동비율, 영업이익률</small>'}
+            ${isBank ? '<br><small style="color: #666; margin-top: 0.25rem; display: block;">은행 특화 지표: ROA, ROE, BIS 자기자본비율, 영업이익률</small>' : '<br><small style="color: #666; margin-top: 0.25rem; display: block;">일반 재무지표: ROA, ROE, 부채비율, 유동비율, 영업이익률</small>'}
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
@@ -1454,12 +1676,12 @@ function displayKPIComparison(kpis, benchmark) {
         }
         console.log(`   - benchmarkValue:`, benchmarkValue);
         
-        // 지표 데이터가 없어도 표시 (은행업의 경우 NIM은 필수)
+        // 지표 데이터가 없어도 표시 (은행업의 경우 BIS 자기자본비율은 필수)
         let actualKpiData = kpiData;
         if (!kpiData) {
-            if (kpi.key === 'nim' && isBank) {
-                // 은행업 NIM은 데이터가 없어도 기본값으로 표시
-                console.log(`   ℹ️  NIM 데이터 없지만 은행업이므로 기본값으로 표시`);
+            if (kpi.key === 'bis_capital_ratio' && isBank) {
+                // 은행업 BIS 자기자본비율은 데이터가 없어도 기본값으로 표시
+                console.log(`   ℹ️  BIS 자기자본비율 데이터 없지만 은행업이므로 기본값으로 표시`);
                 actualKpiData = { value: 0, status: 'error', unit: '%', previous_value: 0 };
             } else {
                 // 다른 지표는 데이터 없으면 건너뛰기
@@ -1577,8 +1799,8 @@ function displayKPIComparison(kpis, benchmark) {
         `;
         
         console.log(`   ✅ KPI [${kpi.key}] 행 HTML 생성 완료 (길이: ${rowHtml.length}자)`);
-        if (kpi.key === 'nim') {
-            console.log(`   🎯 NIM 행 HTML:`, rowHtml.substring(0, 200));
+        if (kpi.key === 'bis_capital_ratio') {
+            console.log(`   🎯 BIS 자기자본비율 행 HTML:`, rowHtml.substring(0, 200));
         }
         tableHtml += rowHtml;
         processedCount++;
@@ -1594,32 +1816,31 @@ function displayKPIComparison(kpis, benchmark) {
     console.log(`   - 전체 KPI 목록: ${kpiList.length}개`);
     console.log(`   - 실제 처리된 KPI: ${processedCount}개`);
     console.log(`   - 생성된 HTML 길이: ${tableHtml.length}자`);
-    console.log(`   - NIM 포함 여부: ${tableHtml.includes('NIM') ? 'YES' : 'NO'}`);
-    console.log(`   - NIM 포함 여부 (소문자): ${tableHtml.includes('nim') ? 'YES' : 'NO'}`);
-    console.log(`   - NIM 행 포함 여부: ${tableHtml.includes('NIM (순이자마진)') ? 'YES' : 'NO'}`);
+    console.log(`   - BIS 자기자본비율 포함 여부: ${tableHtml.includes('BIS 자기자본비율') ? 'YES' : 'NO'}`);
+    console.log(`   - BIS 포함 여부 (소문자): ${tableHtml.includes('bis_capital_ratio') ? 'YES' : 'NO'}`);
     
     // HTML 미리보기 (처음 1000자)
-    if (tableHtml.includes('NIM')) {
-        const nimIndex = tableHtml.indexOf('NIM');
-        console.log(`   - NIM 주변 HTML:`, tableHtml.substring(Math.max(0, nimIndex - 100), nimIndex + 500));
+    if (tableHtml.includes('BIS 자기자본비율')) {
+        const bisIndex = tableHtml.indexOf('BIS 자기자본비율');
+        console.log(`   - BIS 자기자본비율 주변 HTML:`, tableHtml.substring(Math.max(0, bisIndex - 100), bisIndex + 500));
     }
     
     container.innerHTML = tableHtml;
     
     // DOM 업데이트 후 확인
     setTimeout(() => {
-        const nimRows = container.querySelectorAll('tbody tr');
-        console.log(`   - 생성된 테이블 행 수: ${nimRows.length}개`);
+        const bisRows = container.querySelectorAll('tbody tr');
+        console.log(`   - 생성된 테이블 행 수: ${bisRows.length}개`);
         
-        // NIM 행이 실제로 DOM에 있는지 확인
-        const nimRow = Array.from(nimRows).find(row => row.textContent.includes('NIM'));
-        console.log(`   - NIM 행 DOM 존재: ${nimRow ? 'YES' : 'NO'}`);
-        if (nimRow) {
-            console.log(`   - NIM 행 내용:`, nimRow.textContent.substring(0, 150));
-            console.log(`   - NIM 행 HTML:`, nimRow.outerHTML.substring(0, 300));
+        // BIS 자기자본비율 행이 실제로 DOM에 있는지 확인
+        const bisRow = Array.from(bisRows).find(row => row.textContent.includes('BIS 자기자본비율'));
+        console.log(`   - BIS 자기자본비율 행 DOM 존재: ${bisRow ? 'YES' : 'NO'}`);
+        if (bisRow) {
+            console.log(`   - BIS 자기자본비율 행 내용:`, bisRow.textContent.substring(0, 150));
+            console.log(`   - BIS 자기자본비율 행 HTML:`, bisRow.outerHTML.substring(0, 300));
         } else {
-            console.error(`   ❌ NIM 행이 DOM에 없습니다!`);
-            console.log(`   - 모든 행:`, Array.from(nimRows).map(r => r.textContent.substring(0, 50)));
+            console.error(`   ❌ BIS 자기자본비율 행이 DOM에 없습니다!`);
+            console.log(`   - 모든 행:`, Array.from(bisRows).map(r => r.textContent.substring(0, 50)));
         }
     }, 100);
     
@@ -1942,10 +2163,10 @@ function displayReport(report) {
                     </div>
                     ${(appState.currentIndustry === '은행업') ? `
                     <div style="padding: 1rem; background: white; border-radius: var(--radius-sm);">
-                        <strong>NIM (순이자마진)</strong><br>
-                        <span style="font-size: 1.5rem; color: var(--primary-color);">${kpis.nim?.value?.toFixed(2) || 'N/A'}%</span>
-                        <span style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; background: ${getStatusColor(kpis.nim?.status)}; color: white; border-radius: 4px; font-size: 0.75rem;">
-                            ${getStatusText(kpis.nim?.status)}
+                        <strong>BIS 자기자본비율</strong><br>
+                        <span style="font-size: 1.5rem; color: var(--primary-color);">${kpis.bis_capital_ratio?.value?.toFixed(2) || 'N/A'}%</span>
+                        <span style="margin-left: 0.5rem; padding: 0.25rem 0.5rem; background: ${getStatusColor(kpis.bis_capital_ratio?.status)}; color: white; border-radius: 4px; font-size: 0.75rem;">
+                            ${getStatusText(kpis.bis_capital_ratio?.status)}
                         </span>
                     </div>
                     <div style="padding: 1rem; background: white; border-radius: var(--radius-sm);">

@@ -157,7 +157,7 @@ def get_kpi_analysis(corp_code):
         
         print(f"✅ [KPI 분석] 계산된 KPI 키: {list(kpis.keys())}")
         if industry == '은행업':
-            print(f"   - NIM 값: {kpis.get('nim', {}).get('value', 'N/A')}")
+            print(f"   - BIS 자기자본비율 값: {kpis.get('bis_capital_ratio', {}).get('value', 'N/A')}")
             print(f"   - debt_ratio 존재: {'debt_ratio' in kpis}")
             print(f"   - current_ratio 존재: {'current_ratio' in kpis}")
         

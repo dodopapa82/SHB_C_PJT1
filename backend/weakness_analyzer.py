@@ -63,8 +63,8 @@ class WeaknessAnalyzer:
         '은행업': {
             'roa': 0.6,              # 총자산순이익률
             'roe': 8.0,              # 자기자본순이익률
-            'operating_margin': 35.0, # 영업이익률
-            'nim': 1.8,              # 순이자마진 (NIM) - 은행 핵심 지표
+            'operating_margin': 22.0, # 영업이익률 (영업이익 / (이자수익 + 비이자수익), 시중은행 평균)
+            'bis_capital_ratio': 10.5,  # BIS 자기자본비율 (바젤3 기준 10.5% 이상)
         },
         '증권업': {
             'roa': 1.2,
@@ -167,7 +167,7 @@ class WeaknessAnalyzer:
         if industry == '은행업':
             print(f"   - ROA 기준: {self.benchmark.get('roa', 'N/A')}%")
             print(f"   - ROE 기준: {self.benchmark.get('roe', 'N/A')}%")
-            print(f"   - NIM 기준: {self.benchmark.get('nim', 'N/A')}%")
+            print(f"   - BIS 자기자본비율 기준: {self.benchmark.get('bis_capital_ratio', 'N/A')}%")
             print(f"   - 영업이익률 기준: {self.benchmark.get('operating_margin', 'N/A')}%")
         else:
             print(f"   - ROA 기준: {self.benchmark.get('roa', 'N/A')}%")
@@ -185,10 +185,10 @@ class WeaknessAnalyzer:
         
         # Rule 기반 취약점 검사
         if self.industry == '은행업':
-            # 은행 특화 지표 검사 (ROA, ROE, NIM, 영업이익률)
+            # 은행 특화 지표 검사 (ROA, ROE, BIS 자기자본비율, 영업이익률)
             self._check_bank_roa()
             self._check_bank_roe()
-            self._check_bank_nim()
+            self._check_bank_bis_capital_ratio()
             self._check_bank_operating_margin()
         else:
             # 일반 업종 지표 검사
@@ -437,35 +437,48 @@ class WeaknessAnalyzer:
                 'impact': 'ROE 저하는 주주 가치 창출 능력 저하를 의미합니다.'
             })
     
-    def _check_bank_nim(self):
-        """은행 특화: NIM (순이자마진) 검사"""
-        nim = self.kpis.get('nim', {})
-        value = nim.get('value', 0)
-        benchmark = self.benchmark.get('nim', 1.8)
+    def _check_bank_bis_capital_ratio(self):
+        """은행 특화: BIS 자기자본비율 검사"""
+        bis_ratio = self.kpis.get('bis_capital_ratio', {})
+        value = bis_ratio.get('value', 0)
+        benchmark = self.benchmark.get('bis_capital_ratio', 10.5)
         
-        if value < benchmark * 0.5:  # 업종평균의 50% 미만
+        # BIS 자기자본비율은 낮을수록 위험 (은행 건전성 지표)
+        if value < 6.0:  # 6% 미만은 심각
             self.weaknesses.append({
                 'rule_id': 'BANK-03',
-                'title': '낮은 NIM (순이자마진)',
+                'title': '낮은 BIS 자기자본비율 (심각)',
                 'severity': 'critical',
-                'category': '수익성',
-                'description': f'NIM이 {value:.2f}%로 업종평균({benchmark:.2f}%)의 절반에도 미치지 못합니다.',
+                'category': '건전성',
+                'description': f'BIS 자기자본비율이 {value:.2f}%로 바젤3 기준(10.5%)과 최소 요구수준(6%)보다 매우 낮습니다.',
                 'current_value': value,
                 'benchmark_value': benchmark,
-                'recommendation': '이자수익 증대 및 이자비용 절감 방안을 마련해야 합니다.',
-                'impact': '낮은 NIM은 은행의 핵심 수익원인 이자마진이 부족함을 의미합니다.'
+                'recommendation': '자기자본 확충 및 위험가중자산 축소를 통해 BIS 비율을 개선해야 합니다.',
+                'impact': '낮은 BIS 비율은 은행의 건전성 저하 및 규제 리스크를 의미합니다.'
             })
-        elif value < benchmark * 0.8:  # 업종평균의 80% 미만
+        elif value < 8.0:  # 8% 미만은 경고
             self.weaknesses.append({
                 'rule_id': 'BANK-03',
-                'title': 'NIM 주의',
+                'title': 'BIS 자기자본비율 주의',
                 'severity': 'warning',
-                'category': '수익성',
-                'description': f'NIM이 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'category': '건전성',
+                'description': f'BIS 자기자본비율이 {value:.2f}%로 바젤3 기준(10.5%)보다 낮습니다.',
                 'current_value': value,
                 'benchmark_value': benchmark,
-                'recommendation': 'NIM 개선을 위한 이자수익 구조 개선이 필요합니다.',
-                'impact': 'NIM 저하는 은행의 핵심 수익성 악화를 의미합니다.'
+                'recommendation': 'BIS 비율 개선을 위한 자기자본 관리가 필요합니다.',
+                'impact': 'BIS 비율 저하는 은행의 건전성 악화를 의미합니다.'
+            })
+        elif value < benchmark:  # 벤치마크(10.5%) 미만
+            self.weaknesses.append({
+                'rule_id': 'BANK-03',
+                'title': 'BIS 자기자본비율 개선 필요',
+                'severity': 'info',
+                'category': '건전성',
+                'description': f'BIS 자기자본비율이 {value:.2f}%로 업종평균({benchmark:.2f}%)보다 낮습니다.',
+                'current_value': value,
+                'benchmark_value': benchmark,
+                'recommendation': 'BIS 비율을 업종평균 수준으로 개선하는 것이 좋습니다.',
+                'impact': 'BIS 비율 개선은 은행의 건전성 강화에 도움이 됩니다.'
             })
     
     def _check_bank_operating_margin(self):
