@@ -148,6 +148,19 @@ class WeaknessAnalyzer:
         }
     }
     
+    def _is_financial_industry(self, industry: str) -> bool:
+        """
+        금융권 업종인지 확인 (은행, 금융지주, 증권 등)
+        
+        Args:
+            industry: 업종명
+            
+        Returns:
+            금융권 여부
+        """
+        financial_keywords = ['은행', '금융', '지주', '증권', '보험', '캐피탈', '카드']
+        return any(keyword in industry for keyword in financial_keywords)
+    
     def __init__(self, kpi_data: Dict, industry: str = 'default', historical_data: List[Dict] = None):
         """
         Args:
@@ -156,15 +169,23 @@ class WeaknessAnalyzer:
             historical_data: 과거 데이터 (시계열 분석용)
         """
         self.kpis = kpi_data
-        self.industry = industry
+        self.original_industry = industry  # 원본 업종 보관
+        
+        # 금융권 업종은 은행업으로 통합 처리
+        if self._is_financial_industry(industry):
+            self.industry = '은행업'
+            print(f"🏦 [WeaknessAnalyzer] 금융권 업종 감지: '{industry}' → 은행업 벤치마크 적용")
+        else:
+            self.industry = industry
+            
         self.historical_data = historical_data or []
-        self.benchmark = self.INDUSTRY_BENCHMARKS.get(industry, self.INDUSTRY_BENCHMARKS['default'])
+        self.benchmark = self.INDUSTRY_BENCHMARKS.get(self.industry, self.INDUSTRY_BENCHMARKS['default'])
         self.weaknesses = []
         
         # 디버깅: 선택된 벤치마크 확인
-        benchmark_used = '사용자 지정 업종' if industry in self.INDUSTRY_BENCHMARKS else 'default 업종'
-        print(f"📊 [WeaknessAnalyzer] 업종: {industry} ({benchmark_used})")
-        if industry == '은행업':
+        benchmark_used = '사용자 지정 업종' if self.industry in self.INDUSTRY_BENCHMARKS else 'default 업종'
+        print(f"📊 [WeaknessAnalyzer] 업종: {self.industry} ({benchmark_used})")
+        if self.industry == '은행업':
             print(f"   - ROA 기준: {self.benchmark.get('roa', 'N/A')}%")
             print(f"   - ROE 기준: {self.benchmark.get('roe', 'N/A')}%")
             print(f"   - BIS 자기자본비율 기준: {self.benchmark.get('bis_capital_ratio', 'N/A')}%")

@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DART 재무제표 취약점 분석 플랫폼</title>
+    <title>Shinhan Financial Analyzer</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- PDF 생성용 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <!-- 헤더 -->
@@ -16,8 +19,11 @@
         <div class="container">
             <div class="header-content">
                 <div class="logo">
-                    <span class="logo-icon">📊</span>
-                    <span class="logo-text">DART Financial Analyzer</span>
+                    <img src="photo2.png" 
+                         alt="Shinhan SOL" 
+                         class="logo-img" 
+                         style="width: 44px; height: 44px; margin-right: 12px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 70, 255, 0.3);">
+                    <span class="logo-text">Shinhan Financial Analyzer</span>
                 </div>
                 <nav class="nav">
                     <a href="#" class="nav-link active" data-page="search">검색</a>
@@ -33,7 +39,7 @@
     <!-- 메인 컨텐츠 -->
     <main class="main">
         <!-- 검색 화면 -->
-        <section id="search-page" class="page active">
+        <section id="search-page" class="page active" style="background: linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)), url('Photo1.jpeg'); background-size: cover; background-position: center; background-attachment: fixed; min-height: 100vh;">
             <div class="container">
                 <div class="hero">
                     <h1 class="hero-title">재무제표 취약점 분석</h1>

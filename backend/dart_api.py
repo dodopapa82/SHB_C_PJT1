@@ -504,6 +504,12 @@ class DARTApi:
         all_accounts = result.get('list', [])
         print(f"✅ DART API 성공: 총 {len(all_accounts)}개 계정과목 수신")
         
+        # 계정명 정규화 (공백 및 번호 제거)
+        all_accounts = self._normalize_account_names(all_accounts)
+        
+        # 재무상태표 빈 항목 자동 계산 (자산 = 자본 + 부채)
+        all_accounts = self._fill_missing_balance_sheet_items(all_accounts)
+        
         # 재무상태표 (BS), 손익계산서 (IS), 포괄손익계산서 (CIS), 현금흐름표 (CF) 필터링
         balance_sheet = [item for item in all_accounts if item.get('sj_div') == 'BS']
         income_statement_is = [item for item in all_accounts if item.get('sj_div') == 'IS']  # 손익계산서
@@ -533,6 +539,175 @@ class DARTApi:
             'income_statement': comprehensive_income,  # IS + CIS 통합
             'cashflow_statement': cashflow_statement
         }
+    
+    def _normalize_account_names(self, accounts: list) -> list:
+        """
+        계정명 정규화 (공백 및 번호 제거)
+        
+        예시:
+            "자    산    총    계" -> "자산총계"
+            "1. 현금및예치금" -> "현금및예치금"
+            "영 업 외 비 용" -> "영업외비용"
+        
+        Args:
+            accounts: 계정과목 리스트
+            
+        Returns:
+            정규화된 계정과목 리스트
+        """
+        import re
+        
+        normalized_accounts = []
+        for account in accounts:
+            if not account:
+                continue
+                
+            # 원본 데이터 복사
+            normalized = account.copy()
+            
+            # account_nm 필드 정규화
+            if 'account_nm' in normalized and normalized['account_nm']:
+                original_name = normalized['account_nm']
+                
+                # 1. 모든 공백 제거
+                clean_name = re.sub(r'\s+', '', original_name)
+                
+                # 2. 앞에 붙은 번호 제거 (예: "1.", "12.", "1)" 등)
+                clean_name = re.sub(r'^[\d]+[\.\)\-\s]*', '', clean_name)
+                
+                normalized['account_nm'] = clean_name
+                
+                # 원본 계정명도 보존 (필요 시 사용)
+                normalized['account_nm_original'] = original_name
+            
+            normalized_accounts.append(normalized)
+        
+        return normalized_accounts
+    
+    def _fill_missing_balance_sheet_items(self, accounts: list) -> list:
+        """
+        재무상태표 빈 항목 자동 계산 (자산 = 자본 + 부채 원칙)
+        
+        - 자본총계가 없으면: 자본총계 = 자산총계 - 부채총계
+        - 부채총계가 없으면: 부채총계 = 자산총계 - 자본총계
+        - 자산총계가 없으면: 자산총계 = 자본총계 + 부채총계
+        
+        Args:
+            accounts: 계정과목 리스트
+            
+        Returns:
+            빈 항목이 채워진 계정과목 리스트
+        """
+        # BS 계정만 추출
+        bs_accounts = [a for a in accounts if a.get('sj_div') == 'BS']
+        
+        # 주요 계정 찾기
+        def find_account(keyword):
+            for acc in bs_accounts:
+                name = acc.get('account_nm', '')
+                if keyword in name:
+                    return acc
+            return None
+        
+        def get_amount(acc, field):
+            if not acc:
+                return 0
+            try:
+                return float(str(acc.get(field, '0')).replace(',', ''))
+            except:
+                return 0
+        
+        # 주요 계정 조회
+        total_assets_acc = find_account('자산총계')
+        total_liabilities_acc = find_account('부채총계')
+        total_equity_acc = find_account('자본총계')
+        
+        # 자본총계가 없으면 유사 계정 검색 (기말자본, 지배기업소유주지분 등)
+        if not total_equity_acc:
+            equity_alternatives = ['기말자본', '지배기업소유주지분', '지배기업의소유주에게귀속되는자본']
+            for alt_name in equity_alternatives:
+                total_equity_acc = find_account(alt_name)
+                if total_equity_acc:
+                    print(f"   ℹ️  자본총계 대체 계정 발견: '{alt_name}'")
+                    break
+        
+        # 자본과부채총계에서 자본총계 추출 시도 (신한지주 등)
+        equity_liabilities_acc = find_account('자본과부채총계')
+        
+        # 당기/전기 금액 추출
+        assets_current = get_amount(total_assets_acc, 'thstrm_amount')
+        assets_previous = get_amount(total_assets_acc, 'frmtrm_amount')
+        
+        liabilities_current = get_amount(total_liabilities_acc, 'thstrm_amount')
+        liabilities_previous = get_amount(total_liabilities_acc, 'frmtrm_amount')
+        
+        equity_current = get_amount(total_equity_acc, 'thstrm_amount')
+        equity_previous = get_amount(total_equity_acc, 'frmtrm_amount')
+        
+        # 자본과부채총계가 있는 경우 (= 자산총계)
+        if equity_liabilities_acc and not total_assets_acc:
+            assets_current = get_amount(equity_liabilities_acc, 'thstrm_amount')
+            assets_previous = get_amount(equity_liabilities_acc, 'frmtrm_amount')
+        
+        print(f"📊 [재무상태표 검증] 자산={assets_current/1e12:.1f}조, 부채={liabilities_current/1e12:.1f}조, 자본={equity_current/1e12:.1f}조")
+        
+        # 빈 항목 계산 및 추가
+        new_accounts = []
+        
+        # 자본총계가 없으면 계산 (자본 = 자산 - 부채)
+        if equity_current == 0 and assets_current > 0 and liabilities_current > 0:
+            calculated_equity_current = assets_current - liabilities_current
+            calculated_equity_previous = assets_previous - liabilities_previous if assets_previous > 0 and liabilities_previous > 0 else 0
+            
+            new_account = {
+                'account_nm': '자본총계',
+                'account_nm_original': '자본총계 (자동계산)',
+                'thstrm_amount': str(int(calculated_equity_current)),
+                'frmtrm_amount': str(int(calculated_equity_previous)),
+                'sj_div': 'BS',
+                'calculated': True
+            }
+            new_accounts.append(new_account)
+            print(f"   ✅ 자본총계 자동 계산: {calculated_equity_current/1e12:.1f}조 (자산 - 부채)")
+        
+        # 부채총계가 없으면 계산 (부채 = 자산 - 자본)
+        if liabilities_current == 0 and assets_current > 0 and equity_current > 0:
+            calculated_liab_current = assets_current - equity_current
+            calculated_liab_previous = assets_previous - equity_previous if assets_previous > 0 and equity_previous > 0 else 0
+            
+            new_account = {
+                'account_nm': '부채총계',
+                'account_nm_original': '부채총계 (자동계산)',
+                'thstrm_amount': str(int(calculated_liab_current)),
+                'frmtrm_amount': str(int(calculated_liab_previous)),
+                'sj_div': 'BS',
+                'calculated': True
+            }
+            new_accounts.append(new_account)
+            print(f"   ✅ 부채총계 자동 계산: {calculated_liab_current/1e12:.1f}조 (자산 - 자본)")
+        
+        # 자산총계가 없으면 계산 (자산 = 자본 + 부채)
+        if assets_current == 0 and equity_current > 0 and liabilities_current > 0:
+            calculated_assets_current = equity_current + liabilities_current
+            calculated_assets_previous = equity_previous + liabilities_previous if equity_previous > 0 and liabilities_previous > 0 else 0
+            
+            new_account = {
+                'account_nm': '자산총계',
+                'account_nm_original': '자산총계 (자동계산)',
+                'thstrm_amount': str(int(calculated_assets_current)),
+                'frmtrm_amount': str(int(calculated_assets_previous)),
+                'sj_div': 'BS',
+                'calculated': True
+            }
+            new_accounts.append(new_account)
+            print(f"   ✅ 자산총계 자동 계산: {calculated_assets_current/1e12:.1f}조 (자본 + 부채)")
+        
+        # 새로 계산된 계정 추가
+        if new_accounts:
+            print(f"   📋 {len(new_accounts)}개 계정 자동 추가됨")
+            accounts = accounts + new_accounts
+        
+        return accounts
     
     def _generate_financial_data(self, corp_code: str, year: int) -> Dict:
         """

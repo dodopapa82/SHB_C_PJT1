@@ -22,6 +22,9 @@ class KPICalculator:
         if 'list' in financial_data:
             for item in financial_data['list']:
                 account_name = item.get('account_nm', '')
+                # 계정명 정규화 (공백 및 번호 제거)
+                account_name = self._normalize_account_name(account_name)
+                
                 current_amount = self._parse_amount(item.get('thstrm_amount', '0'))
                 previous_amount = self._parse_amount(item.get('frmtrm_amount', '0'))
                 
@@ -29,6 +32,33 @@ class KPICalculator:
                     'current': current_amount,
                     'previous': previous_amount
                 }
+    
+    def _normalize_account_name(self, name: str) -> str:
+        """
+        계정명 정규화 (공백 및 번호 제거)
+        
+        예시:
+            "자    산    총    계" -> "자산총계"
+            "1. 현금및예치금" -> "현금및예치금"
+            "영 업 외 비 용" -> "영업외비용"
+        
+        Args:
+            name: 원본 계정명
+            
+        Returns:
+            정규화된 계정명
+        """
+        import re
+        if not name:
+            return ''
+        
+        # 1. 모든 공백 제거
+        clean_name = re.sub(r'\s+', '', name)
+        
+        # 2. 앞에 붙은 번호 제거 (예: "1.", "12.", "1)" 등)
+        clean_name = re.sub(r'^[\d]+[\.\)\-\s]*', '', clean_name)
+        
+        return clean_name
     
     def _parse_amount(self, amount_str: str) -> float:
         """
@@ -48,7 +78,7 @@ class KPICalculator:
     
     def _get_account_value(self, account_name: str, period: str = 'current') -> float:
         """
-        계정과목 값 조회 (유사 계정과목도 검색)
+        계정과목 값 조회 (유사 계정과목도 검색, 공백 무시)
         
         Args:
             account_name: 계정과목명
@@ -57,19 +87,24 @@ class KPICalculator:
         Returns:
             계정과목 금액
         """
-        # 정확한 매칭
-        if account_name in self.accounts:
-            return self.accounts[account_name].get(period, 0.0)
+        # 검색할 계정명 정규화
+        normalized_search = self._normalize_account_name(account_name)
         
-        # 유사 계정과목 검색 (DART 실제 데이터 대응)
+        # 정확한 매칭 (정규화된 계정명으로 검색)
+        if normalized_search in self.accounts:
+            return self.accounts[normalized_search].get(period, 0.0)
+        
+        # 유사 계정과목 검색 (DART 실제 데이터 대응, 공백 제거된 버전)
         similar_names = {
             '매출액': ['매출', '수익(매출액)', '영업수익', '수익'],
             '영업이익': ['영업이익(손실)', '영업손익', '영업이익'],
-            '당기순이익': ['당기순이익(손실)', '계속영업당기순이익', '당기순손익', '지배기업의 소유주에게 귀속되는 당기순이익'],
-            '총포괄이익': ['총포괄손익', '당기총포괄이익', '지배기업의 소유주에게 귀속되는 총포괄이익'],
-            '영업활동현금흐름': ['영업활동으로인한현금흐름', '영업활동으로 인한 현금흐름'],
-            '투자활동현금흐름': ['투자활동으로인한현금흐름', '투자활동으로 인한 현금흐름'],
-            '재무활동현금흐름': ['재무활동으로인한현금흐름', '재무활동으로 인한 현금흐름'],
+            '당기순이익': ['당기순이익(손실)', '계속영업당기순이익', '당기순손익', '지배기업의소유주에게귀속되는당기순이익'],
+            '총포괄이익': ['총포괄손익', '당기총포괄이익', '지배기업의소유주에게귀속되는총포괄이익'],
+            '영업활동현금흐름': ['영업활동으로인한현금흐름', '영업활동현금흐름'],
+            '투자활동현금흐름': ['투자활동으로인한현금흐름', '투자활동현금흐름'],
+            '재무활동현금흐름': ['재무활동으로인한현금흐름', '재무활동현금흐름'],
+            # 자본 관련 계정 (금융지주사 등)
+            '자본총계': ['자본총계', '기말자본', '지배기업소유주지분', '지배기업의소유주에게귀속되는자본', '자본'],
             # 은행 특화 계정 (BIS 자기자본비율 산출용)
             '위험가중자산': ['총위험가중자산', '신용위험가중자산', '위험가중자산합계', 'RWA', 
                          '위험가중자산총계', '신용리스크가중자산', '시장리스크가중자산'],
@@ -78,13 +113,83 @@ class KPICalculator:
         
         if account_name in similar_names:
             for similar_name in similar_names[account_name]:
-                if similar_name in self.accounts:
-                    return self.accounts[similar_name].get(period, 0.0)
+                # 유사 계정명도 정규화하여 검색
+                normalized_similar = self._normalize_account_name(similar_name)
+                if normalized_similar in self.accounts:
+                    return self.accounts[normalized_similar].get(period, 0.0)
             
-            # 부분 일치 검색
+            # 부분 일치 검색 (정규화된 계정명 비교)
             for key in self.accounts.keys():
-                if any(name in key for name in similar_names[account_name]):
+                for name in similar_names[account_name]:
+                    normalized_name = self._normalize_account_name(name)
+                    if normalized_name in key or name in key:
+                        return self.accounts[key].get(period, 0.0)
+        
+        # 부분 일치 검색 (기본 계정명으로)
+        for key in self.accounts.keys():
+            if normalized_search in key:
                     return self.accounts[key].get(period, 0.0)
+        
+        # 특수 케이스: 자산 = 자본 + 부채 원칙으로 빈 항목 계산
+        
+        # 자본총계가 없으면: 자본 = 자산 - 부채
+        if account_name == '자본총계' or normalized_search == '자본총계':
+            # 방법 1: 자본과부채총계 - 부채총계
+            total_assets_liabilities = 0.0
+            total_liabilities = 0.0
+            total_assets = 0.0
+            
+            for key in self.accounts.keys():
+                if '자본과부채총계' in key:
+                    total_assets_liabilities = self.accounts[key].get(period, 0.0)
+                elif '자산총계' in key:
+                    total_assets = self.accounts[key].get(period, 0.0)
+                elif '부채총계' in key and '자본과부채총계' not in key:
+                    total_liabilities = self.accounts[key].get(period, 0.0)
+            
+            # 자본과부채총계가 있으면 사용
+            if total_assets_liabilities > 0 and total_liabilities > 0:
+                calculated_equity = total_assets_liabilities - total_liabilities
+                print(f"   📊 [자본총계 계산] 자본과부채총계({total_assets_liabilities/1e12:.1f}조) - 부채총계({total_liabilities/1e12:.1f}조) = {calculated_equity/1e12:.1f}조")
+                return calculated_equity
+            
+            # 자산총계가 있으면 사용
+            if total_assets > 0 and total_liabilities > 0:
+                calculated_equity = total_assets - total_liabilities
+                print(f"   📊 [자본총계 계산] 자산총계({total_assets/1e12:.1f}조) - 부채총계({total_liabilities/1e12:.1f}조) = {calculated_equity/1e12:.1f}조")
+                return calculated_equity
+        
+        # 부채총계가 없으면: 부채 = 자산 - 자본
+        if account_name == '부채총계' or normalized_search == '부채총계':
+            total_assets = 0.0
+            total_equity = 0.0
+            
+            for key in self.accounts.keys():
+                if '자산총계' in key or '자본과부채총계' in key:
+                    total_assets = self.accounts[key].get(period, 0.0)
+                elif '자본총계' in key:
+                    total_equity = self.accounts[key].get(period, 0.0)
+            
+            if total_assets > 0 and total_equity > 0:
+                calculated_liab = total_assets - total_equity
+                print(f"   📊 [부채총계 계산] 자산총계({total_assets/1e12:.1f}조) - 자본총계({total_equity/1e12:.1f}조) = {calculated_liab/1e12:.1f}조")
+                return calculated_liab
+        
+        # 자산총계가 없으면: 자산 = 자본 + 부채
+        if account_name == '자산총계' or normalized_search == '자산총계':
+            total_equity = 0.0
+            total_liabilities = 0.0
+            
+            for key in self.accounts.keys():
+                if '자본총계' in key:
+                    total_equity = self.accounts[key].get(period, 0.0)
+                elif '부채총계' in key and '자본과부채총계' not in key:
+                    total_liabilities = self.accounts[key].get(period, 0.0)
+            
+            if total_equity > 0 and total_liabilities > 0:
+                calculated_assets = total_equity + total_liabilities
+                print(f"   📊 [자산총계 계산] 자본총계({total_equity/1e12:.1f}조) + 부채총계({total_liabilities/1e12:.1f}조) = {calculated_assets/1e12:.1f}조")
+                return calculated_assets
         
         return 0.0
     
@@ -1042,35 +1147,55 @@ class KPICalculator:
             'description': '고정이하여신(NPL) 비율'
         }
     
+    def _is_financial_industry(self, industry: str) -> bool:
+        """
+        금융권 업종인지 확인 (은행, 금융지주, 증권 등)
+        
+        Args:
+            industry: 업종명
+            
+        Returns:
+            금융권 여부
+        """
+        financial_keywords = ['은행', '금융', '지주', '증권', '보험', '캐피탈', '카드']
+        return any(keyword in industry for keyword in financial_keywords)
+    
     def calculate_all_kpis(self, industry: str = 'default') -> Dict:
         """
         모든 KPI 계산
         
         Args:
-            industry: 업종 (은행업일 경우 특화 지표 사용)
+            industry: 업종 (은행업/금융업일 경우 특화 지표 사용)
         
         Returns:
             전체 KPI 결과
         """
         print(f"🔧 [KPICalculator] calculate_all_kpis 호출: industry={industry}")
         
+        # 금융권 업종 확인 (은행, 금융지주, 증권 등)
+        is_financial = self._is_financial_industry(industry)
+        effective_industry = '은행업' if is_financial else industry
+        
+        if is_financial:
+            print(f"🏦 [KPICalculator] 금융권 업종 감지: '{industry}' → 은행업 KPI 적용")
+        
         # 기본 KPI 계산 (영업이익률은 업종에 따라 다른 공식 적용)
         base_kpis = {
             'roa': self.calculate_roa(),
             'roe': self.calculate_roe(),
-            'operating_margin': self.calculate_operating_margin(industry),  # 업종 전달
+            'operating_margin': self.calculate_operating_margin(effective_industry),  # 업종 전달
             'net_profit_margin': self.calculate_net_profit_margin()
         }
         
-        # 은행업인 경우 특화 지표 사용 (ROA, ROE, BIS 자기자본비율, 영업이익률)
-        if industry == '은행업':
-            print(f"🏦 [KPICalculator] 은행업 감지 - BIS 자기자본비율 계산 시작")
+        # 금융권인 경우 특화 지표 사용 (ROA, ROE, BIS 자기자본비율, 영업이익률)
+        if is_financial:
+            print(f"🏦 [KPICalculator] 금융권 - BIS 자기자본비율 계산 시작")
             bis_result = self.calculate_bis_capital_ratio()
             print(f"   - BIS 자기자본비율 계산 결과: {bis_result}")
             base_kpis.update({
                 'bis_capital_ratio': bis_result
             })
-            print(f"✅ [KPICalculator] 은행업 KPI 완료: {list(base_kpis.keys())}")
+            print(f"✅ [KPICalculator] 금융권 KPI 완료: {list(base_kpis.keys())}")
         else:
             # 일반 업종은 기존 지표 사용
             print(f"🏭 [KPICalculator] 일반 업종 - 부채비율, 유동비율 계산")

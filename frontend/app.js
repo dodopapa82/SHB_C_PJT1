@@ -47,6 +47,22 @@ const appState = {
     reportData: null
 };
 
+/**
+ * 금융권 업종인지 확인 (은행, 금융지주, 증권 등)
+ */
+function isFinancialIndustry(industry) {
+    if (!industry) return false;
+    const financialKeywords = ['은행', '금융', '지주', '증권', '보험', '캐피탈', '카드'];
+    return financialKeywords.some(keyword => industry.includes(keyword));
+}
+
+/**
+ * 은행업 KPI 적용 여부 확인
+ */
+function shouldUseBankKPI() {
+    return isFinancialIndustry(appState.currentIndustry);
+}
+
 // Charts
 let profitabilityChart = null;
 let financialStructureChart = null;
@@ -91,17 +107,29 @@ function hideLoading() {
 }
 
 /**
- * 숫자 포맷팅
+ * 숫자 포맷팅 (음수도 동일한 포맷 적용)
  */
 function formatNumber(num) {
-    if (num >= 1000000000000) {
-        return (num / 1000000000000).toFixed(1) + '조';
-    } else if (num >= 100000000) {
-        return (num / 100000000).toFixed(1) + '억';
-    } else if (num >= 10000) {
-        return (num / 10000).toFixed(1) + '만';
+    if (num === null || num === undefined || isNaN(num)) {
+        return '0';
     }
-    return num.toLocaleString();
+    
+    // 음수 처리: 절대값으로 포맷팅 후 부호 추가
+    const isNegative = num < 0;
+    const absNum = Math.abs(num);
+    let formatted;
+    
+    if (absNum >= 1000000000000) {
+        formatted = (absNum / 1000000000000).toFixed(1) + '조';
+    } else if (absNum >= 100000000) {
+        formatted = (absNum / 100000000).toFixed(1) + '억';
+    } else if (absNum >= 10000) {
+        formatted = (absNum / 10000).toFixed(1) + '만';
+    } else {
+        formatted = absNum.toLocaleString();
+    }
+    
+    return isNegative ? '-' + formatted : formatted;
 }
 
 /**
@@ -360,9 +388,9 @@ async function loadDashboard() {
             current_ratio: kpiData.kpis?.current_ratio
         });
         
-        // BIS 자기자본비율 데이터 상세 확인 (은행업일 경우)
-        if (appState.currentIndustry === '은행업') {
-            console.log('🏦 은행업 BIS 자기자본비율 데이터 상세:', {
+        // BIS 자기자본비율 데이터 상세 확인 (금융권일 경우)
+        if (shouldUseBankKPI()) {
+            console.log('🏦 금융권 BIS 자기자본비율 데이터 상세:', {
                 exists: !!kpiData.kpis?.bis_capital_ratio,
                 value: kpiData.kpis?.bis_capital_ratio?.value,
                 status: kpiData.kpis?.bis_capital_ratio?.status,
@@ -433,8 +461,8 @@ function updateKPICards(kpis) {
     console.log('   - debt_ratio 존재:', 'debt_ratio' in (kpis || {}));
     console.log('   - current_ratio 존재:', 'current_ratio' in (kpis || {}));
     
-    const isBank = appState.currentIndustry === '은행업';
-    console.log('   - isBank:', isBank);
+    const isBank = shouldUseBankKPI();
+    console.log('   - isBank (금융권):', isBank, `(원본 업종: ${appState.currentIndustry})`);
     
     // ROA (공통)
     updateKPICard('roa', kpis.roa);
@@ -450,7 +478,7 @@ function updateKPICards(kpis) {
         
         // BIS 자기자본비율이 없거나 에러인 경우 기본값 사용
         const bisData = kpis.bis_capital_ratio || { value: 0, status: 'error', unit: '%', message: '데이터 없음' };
-        updateKPICardWithLabel('debt', bisData, 'BIS 자기자본비율', '자기자본 / 총자산');
+        updateKPICardWithLabel('debt', bisData, 'BIS 자기자본비율', '자기자본 / 위험가중자산');
         updateKPICardWithLabel('current', kpis.operating_margin, '영업이익률', '영업이익 / 매출액');
     } else {
         // 일반 업종: 부채비율과 유동비율
@@ -623,7 +651,7 @@ function updateProfitabilityChart(kpis) {
         profitabilityChart.destroy();
     }
     
-    const isBank = appState.currentIndustry === '은행업';
+    const isBank = shouldUseBankKPI();
     
     profitabilityChart = new Chart(ctx, {
         type: 'bar',
@@ -697,49 +725,110 @@ function updateFinancialStructureChart(kpis) {
         financialStructureChart.destroy();
     }
     
-    const isBank = appState.currentIndustry === '은행업';
+    const isBank = shouldUseBankKPI();
     
-    financialStructureChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: isBank ? ['BIS 자기자본비율', '영업이익률'] : ['부채비율', '유동비율'],
-            datasets: [{
-                label: isBank ? '은행 특화 지표 (%)' : '재무구조 (%)',
-                data: isBank ? [
-                    kpis.bis_capital_ratio?.value || 0,
-                    kpis.operating_margin?.value || 0
-                ] : [
-                    kpis.debt_ratio?.value || 0,
-                    kpis.current_ratio?.value || 0
-                ],
-                backgroundColor: [
-                    'rgba(255, 75, 75, 0.8)',
-                    'rgba(0, 200, 81, 0.8)'
-                ],
-                borderColor: [
-                    'rgba(255, 75, 75, 1)',
-                    'rgba(0, 200, 81, 1)'
-                ],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.label + ': ' + context.parsed.toFixed(2) + '%';
+    if (isBank) {
+        // 은행업: 자산/부채/자본 비율 파이차트
+        // 트렌드 데이터에서 자산, 부채, 자본 정보 가져오기
+        const totalAssets = appState.kpiData?.trends?.자산총계?.current || 0;
+        const totalLiabilities = appState.kpiData?.trends?.부채총계?.current || 0;
+        const totalEquity = appState.kpiData?.trends?.자본총계?.current || 
+                           appState.kpiData?.trends?.기말자본?.current || 0;
+        
+        // 비율 계산 (총자산 대비)
+        const total = totalAssets || (totalLiabilities + totalEquity);
+        const liabilityRatio = total > 0 ? (totalLiabilities / total) * 100 : 0;
+        const equityRatio = total > 0 ? (totalEquity / total) * 100 : 0;
+        
+        console.log('🏦 [재무구조 차트] 은행업 - 자산/부채/자본 비율');
+        console.log(`   - 총자산: ${(totalAssets / 1e12).toFixed(1)}조`);
+        console.log(`   - 부채: ${(totalLiabilities / 1e12).toFixed(1)}조 (${liabilityRatio.toFixed(1)}%)`);
+        console.log(`   - 자본: ${(totalEquity / 1e12).toFixed(1)}조 (${equityRatio.toFixed(1)}%)`);
+        
+        financialStructureChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['부채', '자본'],
+                datasets: [{
+                    label: '재무구조 비율 (%)',
+                    data: [liabilityRatio, equityRatio],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.8)',  // 부채 - 빨간색 계열
+                        'rgba(54, 162, 235, 0.8)'   // 자본 - 파란색 계열
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    title: {
+                        display: true,
+                        text: '자산 구성 (부채 vs 자본)',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const amount = label === '부채' ? totalLiabilities : totalEquity;
+                                return `${label}: ${value.toFixed(1)}% (${(amount / 1e12).toFixed(1)}조)`;
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
+    } else {
+        // 일반 업종: 부채비율, 유동비율
+        financialStructureChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['부채비율', '유동비율'],
+                datasets: [{
+                    label: '재무구조 (%)',
+                    data: [
+                        kpis.debt_ratio?.value || 0,
+                        kpis.current_ratio?.value || 0
+                    ],
+                    backgroundColor: [
+                        'rgba(255, 75, 75, 0.8)',
+                        'rgba(0, 200, 81, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 75, 75, 1)',
+                        'rgba(0, 200, 81, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.parsed.toFixed(2) + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 /**
@@ -878,7 +967,18 @@ async function loadFinancialStatement() {
         
         // 화면 업데이트
         updateFinancialHeader();
+        
+        // 재무상태표 탭 활성화 및 표시
+        document.querySelectorAll('.financial-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        const balanceTab = document.getElementById('tab-balance');
+        if (balanceTab) {
+            balanceTab.classList.add('active');
+        }
+        
         displayFinancialStatement(appState.financialData, 'balance'); // 기본으로 재무상태표 표시
+        console.log('✅ 재무상태표 탭 활성화 및 표시 완료');
         
     } catch (error) {
         console.error('❌ 재무제표 로드 오류:', error);
@@ -993,13 +1093,14 @@ function displayFinancialStatement(data, type) {
             const balanceKeywords = [
                 '자산총계', '유동자산', '비유동자산',
                 '부채총계', '유동부채', '비유동부채',
-                '자본총계', '자본금', '이익잉여금'
+                '자본총계', '기말자본', '자본금', '이익잉여금', '지배기업소유주지분'
             ];
             
-            // 키워드 매칭 계정 우선 선택
-            const keywordAccounts = bsAccounts.filter(item => 
-                balanceKeywords.some(keyword => item.account_nm.includes(keyword))
-            );
+            // 키워드 매칭 계정 우선 선택 (공백 제거 후 비교)
+            const keywordAccounts = bsAccounts.filter(item => {
+                const normalizedName = item.account_nm.replace(/\s+/g, '').replace(/^\d+\.\s*/, '');
+                return balanceKeywords.some(keyword => normalizedName.includes(keyword));
+            });
             
             if (keywordAccounts.length > 0) {
                 accounts = keywordAccounts;
@@ -1008,13 +1109,14 @@ function displayFinancialStatement(data, type) {
                 accounts = bsAccounts.slice(0, 30);
             }
         } else {
-            // BS 계정이 없으면 키워드로 검색
+            // BS 계정이 없으면 키워드로 검색 (공백 제거 후 비교)
             const balanceKeywords = [
                 '자산', '부채', '자본', '유동', '비유동'
             ];
-            accounts = accountList.filter(item => 
-                balanceKeywords.some(keyword => item.account_nm.includes(keyword))
-            ).slice(0, 30);
+            accounts = accountList.filter(item => {
+                const normalizedName = item.account_nm.replace(/\s+/g, '').replace(/^\d+\.\s*/, '');
+                return balanceKeywords.some(keyword => normalizedName.includes(keyword));
+            }).slice(0, 30);
         }
         
         console.log(`💼 재무상태표 계정 (필터링 후): ${accounts.length}개`);
@@ -1223,20 +1325,45 @@ function displayFinancialStatement(data, type) {
 }
 
 /**
+ * 계정명 정규화 (공백 및 번호 제거)
+ */
+function normalizeAccountName(name) {
+    if (!name) return '';
+    // 공백 제거, 번호 제거 (예: "1. 현금및예치금" -> "현금및예치금")
+    return name.replace(/\s+/g, '').replace(/^\d+\.\s*/, '');
+}
+
+/**
+ * 계정명으로 계정 찾기 (공백 무시)
+ */
+function findAccountByName(accounts, targetName) {
+    const normalizedTarget = normalizeAccountName(targetName);
+    return accounts.find(a => normalizeAccountName(a.account_nm) === normalizedTarget);
+}
+
+/**
  * 재무상태표 생성
  */
 function generateBalanceSheet(accounts, currentYear, previousYear) {
     console.log('💼 재무상태표 생성 시작, 계정 수:', accounts.length);
     let html = '';
     
+    // 키워드가 없으면 전체 BS 계정 표시
+    if (accounts.length === 0) {
+        console.warn('⚠️  재무상태표 계정이 없습니다.');
+        return '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #666;">재무상태표 항목이 없습니다.</td></tr>';
+    }
+    
     // 자산 섹션
     html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 자산 】</td></tr>';
     const assetAccounts = ['자산총계', '유동자산', '비유동자산'];
+    let assetFound = 0;
     console.log('  자산 계정 필터링...');
     assetAccounts.forEach(name => {
-        const account = accounts.find(a => a.account_nm === name);
+        const account = findAccountByName(accounts, name);
         if (account) {
             html += generateFinancialRow(account, name === '자산총계');
+            assetFound++;
         } else {
             console.warn(`  ⚠️  ${name} 계정 없음`);
         }
@@ -1245,11 +1372,13 @@ function generateBalanceSheet(accounts, currentYear, previousYear) {
     // 부채 섹션
     html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 부채 】</td></tr>';
     const liabilityAccounts = ['부채총계', '유동부채', '비유동부채'];
+    let liabilityFound = 0;
     console.log('  부채 계정 필터링...');
     liabilityAccounts.forEach(name => {
-        const account = accounts.find(a => a.account_nm === name);
+        const account = findAccountByName(accounts, name);
         if (account) {
             html += generateFinancialRow(account, name === '부채총계');
+            liabilityFound++;
         } else {
             console.warn(`  ⚠️  ${name} 계정 없음`);
         }
@@ -1258,15 +1387,45 @@ function generateBalanceSheet(accounts, currentYear, previousYear) {
     // 자본 섹션
     html += '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 자본 】</td></tr>';
     console.log('  자본 계정 필터링...');
-    const equityAccount = accounts.find(a => a.account_nm === '자본총계');
+    
+    // 자본총계 또는 대체 계정 검색 (기말자본, 지배기업소유주지분 등)
+    let equityAccount = findAccountByName(accounts, '자본총계');
+    if (!equityAccount) {
+        const equityAlternatives = ['기말자본', '지배기업소유주지분', '지배기업의소유주에게귀속되는자본'];
+        for (const altName of equityAlternatives) {
+            equityAccount = findAccountByName(accounts, altName);
+            if (equityAccount) {
+                console.log(`  ℹ️  자본총계 대체 계정 발견: '${altName}'`);
+                break;
+            }
+        }
+    }
+    
     if (equityAccount) {
         html += generateFinancialRow(equityAccount, true);
     } else {
         console.warn('  ⚠️  자본총계 계정 없음');
     }
     
+    // 표시된 계정이 없으면 전체 계정 표시
+    if (assetFound === 0 && liabilityFound === 0 && !equityAccount) {
+        console.log('  📋 키워드 매칭 없음 - 전체 BS 계정 표시');
+        html = '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 재무상태 】</td></tr>';
+        accounts.slice(0, 30).forEach(account => {
+            const isTotal = normalizeAccountName(account.account_nm).includes('총계');
+            html += generateFinancialRow(account, isTotal);
+        });
+    }
+    
     console.log('✅ 재무상태표 HTML 생성 완료');
     return html;
+}
+
+/**
+ * 계정명이 특정 키워드를 포함하는지 확인 (공백 무시)
+ */
+function accountNameIncludes(accountName, keyword) {
+    return normalizeAccountName(accountName).includes(normalizeAccountName(keyword));
 }
 
 /**
@@ -1299,10 +1458,10 @@ function generateIncomeStatement(accounts, currentYear, previousYear) {
                 console.warn('   ⚠️  null 계정 발견');
                 return;
             }
-            const isTotal = account.account_nm.includes('당기순이익') || 
-                           account.account_nm.includes('총포괄이익') ||
-                           account.account_nm.includes('기타포괄손익') ||
-                           account.account_nm.includes('총포괄손익');
+            const isTotal = accountNameIncludes(account.account_nm, '당기순이익') || 
+                           accountNameIncludes(account.account_nm, '총포괄이익') ||
+                           accountNameIncludes(account.account_nm, '기타포괄손익') ||
+                           accountNameIncludes(account.account_nm, '총포괄손익');
             const rowHtml = generateFinancialRow(account, isTotal);
             if (rowHtml) {
                 html += rowHtml;
@@ -1311,10 +1470,10 @@ function generateIncomeStatement(accounts, currentYear, previousYear) {
         console.log(`   ✅ CIS 데이터 표시 완료: ${cisAccounts.length}개 행`);
         
         // CIS에 주요 계정이 없으면 IS에서 보완
-        const hasNetIncome = cisAccounts.some(a => a.account_nm && a.account_nm.includes('당기순이익'));
+        const hasNetIncome = cisAccounts.some(a => a.account_nm && accountNameIncludes(a.account_nm, '당기순이익'));
         if (!hasNetIncome && isAccounts.length > 0) {
             console.log('   ℹ️  CIS에 당기순이익 없음 - IS에서 보완');
-            const netIncomeFromIS = isAccounts.find(a => a.account_nm && a.account_nm.includes('당기순이익'));
+            const netIncomeFromIS = isAccounts.find(a => a.account_nm && accountNameIncludes(a.account_nm, '당기순이익'));
             if (netIncomeFromIS) {
                 html += generateFinancialRow(netIncomeFromIS, true);
             }
@@ -1328,9 +1487,9 @@ function generateIncomeStatement(accounts, currentYear, previousYear) {
                 console.warn('   ⚠️  null 계정 발견');
                 return;
             }
-            const isTotal = account.account_nm.includes('영업이익') || 
-                           account.account_nm.includes('법인세비용차감전') ||
-                           account.account_nm.includes('당기순이익');
+            const isTotal = accountNameIncludes(account.account_nm, '영업이익') || 
+                           accountNameIncludes(account.account_nm, '법인세비용차감전') ||
+                           accountNameIncludes(account.account_nm, '당기순이익');
             const rowHtml = generateFinancialRow(account, isTotal);
             if (rowHtml) {
                 html += rowHtml;
@@ -1346,9 +1505,9 @@ function generateIncomeStatement(accounts, currentYear, previousYear) {
                 console.warn('   ⚠️  null 계정 발견');
                 return;
             }
-            const isTotal = account.account_nm.includes('영업이익') || 
-                           account.account_nm.includes('당기순이익') ||
-                           account.account_nm.includes('총포괄이익');
+            const isTotal = accountNameIncludes(account.account_nm, '영업이익') || 
+                           accountNameIncludes(account.account_nm, '당기순이익') ||
+                           accountNameIncludes(account.account_nm, '총포괄이익');
             const rowHtml = generateFinancialRow(account, isTotal);
             if (rowHtml) {
                 html += rowHtml;
@@ -1369,29 +1528,47 @@ function generateIncomeStatement(accounts, currentYear, previousYear) {
  */
 function generateCashflowStatement(accounts, currentYear, previousYear) {
     console.log('💵 현금흐름표 생성 시작, 계정 수:', accounts.length);
+    
+    if (accounts.length === 0) {
+        console.warn('⚠️  현금흐름표 계정이 없습니다.');
+        return '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #666;">현금흐름표 항목이 없습니다.</td></tr>';
+    }
+    
     let html = '<tr class="category-row"><td colspan="4" style="padding: 1rem; font-size: 1.1rem;">【 현금흐름표 】</td></tr>';
     
     console.log('  사용 가능한 계정:', accounts.map(a => a.account_nm).join(', '));
     
-    // 우선순위 계정 (실제 DART 계정과목명 기준)
+    // 우선순위 계정 (실제 DART 계정과목명 기준, 공백 무시)
     const priorities = [
         { keywords: ['영업활동'], label: '영업활동현금흐름' },
         { keywords: ['투자활동'], label: '투자활동현금흐름' },
         { keywords: ['재무활동'], label: '재무활동현금흐름' },
-        { keywords: ['현금및현금성자산의순증가', '현금의증가'], label: '현금및현금성자산의순증가' }
+        { keywords: ['현금및현금성자산의순증가', '현금의증가', '순증가'], label: '현금및현금성자산의순증가' }
     ];
     
+    let foundCount = 0;
     priorities.forEach(priority => {
         const account = accounts.find(a => 
-            priority.keywords.some(keyword => a.account_nm.includes(keyword))
+            priority.keywords.some(keyword => accountNameIncludes(a.account_nm, keyword))
         );
         
         if (account) {
             html += generateFinancialRow(account, priority.label.includes('순증가'));
+            foundCount++;
         } else {
             console.warn(`  ⚠️  ${priority.label} 계정 없음`);
         }
     });
+    
+    // 키워드 매칭 없으면 전체 CF 계정 표시 (최대 20개)
+    if (foundCount === 0) {
+        console.log('  📋 키워드 매칭 없음 - 전체 CF 계정 표시');
+        accounts.slice(0, 20).forEach(account => {
+            const isTotal = accountNameIncludes(account.account_nm, '순증가') || 
+                           accountNameIncludes(account.account_nm, '합계');
+            html += generateFinancialRow(account, isTotal);
+        });
+    }
     
     console.log('✅ 현금흐름표 HTML 생성 완료');
     return html;
@@ -1533,7 +1710,7 @@ function updateWeaknessHeader() {
  * 취약점 페이지 제목 업데이트 (업종에 따라)
  */
 function updateWeaknessPageTitle() {
-    const isBank = appState.currentIndustry === '은행업';
+    const isBank = shouldUseBankKPI();
     
     // KPI 비교 섹션 제목 업데이트
     const kpiSection = document.querySelector('#kpi-comparison')?.parentElement;
@@ -1884,7 +2061,7 @@ function displayWeaknesses(weaknesses) {
     }
     
     // 은행업일 경우 부채비율/유동비율 관련 취약점 필터링
-    const isBank = appState.currentIndustry === '은행업';
+    const isBank = shouldUseBankKPI();
     let filteredWeaknesses = weaknesses;
     
     if (isBank) {
@@ -2287,11 +2464,91 @@ function generateSummary(kpis, analysis) {
 }
 
 /**
- * PDF 다운로드 (시뮬레이션)
+ * PDF 다운로드
  */
-function downloadReport() {
-    alert('PDF 다운로드 기능은 추후 구현 예정입니다.\n현재 화면을 인쇄(Ctrl+P)하여 PDF로 저장할 수 있습니다.');
-    window.print();
+async function downloadReport() {
+    const reportContent = document.getElementById('report-content');
+    
+    if (!reportContent) {
+        alert('보고서 내용이 없습니다.');
+        return;
+    }
+    
+    // 로딩 표시
+    const downloadBtn = document.getElementById('download-report-btn');
+    const originalText = downloadBtn.innerHTML;
+    downloadBtn.innerHTML = '⏳ PDF 생성 중...';
+    downloadBtn.disabled = true;
+    
+    try {
+        // jsPDF 객체 생성
+        const { jsPDF } = window.jspdf;
+        
+        // html2canvas로 보고서 영역을 이미지로 변환
+        const canvas = await html2canvas(reportContent, {
+            scale: 2,  // 고해상도
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+        
+        // PDF 생성 (A4 사이즈)
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        
+        // 이미지 비율 계산
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
+        const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+        const imgX = (pdfWidth - imgWidth * ratio) / 2;
+        const imgY = 10;
+        
+        // 이미지가 한 페이지에 들어가지 않으면 여러 페이지로 분할
+        const pageHeight = pdfHeight - 20;  // 여백 제외
+        const totalPages = Math.ceil((imgHeight * ratio) / pageHeight);
+        
+        for (let i = 0; i < totalPages; i++) {
+            if (i > 0) {
+                pdf.addPage();
+            }
+            
+            // 각 페이지에 해당하는 영역 추출
+            const sourceY = i * (pageHeight / ratio);
+            const sourceHeight = Math.min(pageHeight / ratio, imgHeight - sourceY);
+            
+            // 임시 캔버스에 해당 영역 그리기
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = imgWidth;
+            pageCanvas.height = sourceHeight;
+            const ctx = pageCanvas.getContext('2d');
+            ctx.drawImage(canvas, 0, sourceY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
+            
+            const pageImgData = pageCanvas.toDataURL('image/png');
+            pdf.addImage(pageImgData, 'PNG', imgX, 10, imgWidth * ratio, sourceHeight * ratio);
+        }
+        
+        // 파일명 생성
+        const corpName = appState.currentCorpName || '기업';
+        const year = appState.currentYear || new Date().getFullYear();
+        const fileName = `${corpName}_재무분석보고서_${year}.pdf`;
+        
+        // PDF 다운로드
+        pdf.save(fileName);
+        
+        console.log(`✅ PDF 다운로드 완료: ${fileName}`);
+        
+    } catch (error) {
+        console.error('❌ PDF 생성 오류:', error);
+        alert('PDF 생성 중 오류가 발생했습니다.\n브라우저의 인쇄 기능(Ctrl+P)을 사용해주세요.');
+        window.print();
+    } finally {
+        // 버튼 복원
+        downloadBtn.innerHTML = originalText;
+        downloadBtn.disabled = false;
+    }
 }
 
 // ===========================
